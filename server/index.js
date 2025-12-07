@@ -1,77 +1,113 @@
-// server/index.js (Focus on the 'connection' handler)
-// Add this block to the top/bottom of your server file
-process.on('uncaughtException', err => {
-    console.error('CRASH! UNCAUGHT EXCEPTION:', err);
-    // Exit with code 1 (failure) so Render attempts a restart
-    process.exit(1); 
-});
-// ... other imports and setup ...
 // server/index.js
 
 // 1. IMPORT NECESSARY MODULES
-const { createServer } = require('http'); // For creating the base HTTP server
-const { Server } = require('socket.io');   // For creating the Socket.io server
-const express = require('express');        // For Express app
-const cors = require('cors');              // For handling cross-origin requests
+const { createServer } = require('http');
+const { Server } = require('socket.io');
+const express = require('express');
+const cors = require('cors');
 
-// 2. SETUP EXPRESS APP
+// Define the port, prioritizing the environment variable (for Render)
+const PORT = process.env.PORT || 3001; 
+
+// 2. SETUP EXPRESS AND CORS
 const app = express();
-app.use(cors());
+// IMPORTANT: Replace 'https://YOUR-FRONTEND-URL.com' with the actual URL (e.g., from Vercel)
+const FRONTEND_URL = process.env.CLIENT_URL || 'http://localhost:3000'; 
 
-// 3. CREATE HTTP SERVER (Express app needs to be passed to this)
-const server = createServer(app);
-
-// 4. CREATE SOCKET.IO INSTANCE (The 'io' variable MUST be defined here)
-const io = new Server(server, {
-  cors: {
-    // This is the domain where your React frontend is hosted!
-    origin: "battle-mat-dusky.vercel.app", // **REPLACE THIS**
+app.use(cors({
+    origin: FRONTEND_URL,
     methods: ["GET", "POST"]
-  }
+}));
+
+// 3. CREATE BASE HTTP SERVER AND SOCKET.IO INSTANCE
+const server = createServer(app);
+const io = new Server(server, {
+    cors: {
+        origin: FRONTEND_URL,
+        methods: ["GET", "POST"]
+    }
 });
 
-// Now, the 'io.on("connection", ...)' block should work.
+// 4. DEPLOYMENT HEALTH CHECK ROUTE
+// Render needs a quick, simple route to check if the server is alive.
+app.get('/', (req, res) => {
+    res.send('BattleMat Signaling Server Running');
+});
 
-// io.on('connection', (socket) => { ... });
+
+// 5. SOCKET.IO ROOMS AND GAME LOGIC
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
-    // 1. Listen for the specific 'join-room' event sent by the client
+    // [PEERJS SERVER LOGIC WOULD GO HERE IF HOSTED SEPARATELY]
+
+    // Listen for the client joining a specific room (ROOM_ID from client URL)
     socket.on('join-room', (roomId, userId) => {
         
-        // --- CRITICAL FIX: Join the user to the specified room ---
+        // --- CRITICAL ROOM FIX ---
         socket.join(roomId);
         console.log(`User ${userId} joined room: ${roomId}`);
         
-        // 2. Broadcast to others in the SAME room
+        // Broadcast to others in the SAME room that a new user connected
+        // The sender needs to update the game state immediately after joining
         socket.to(roomId).emit('user-connected', userId);
-        
-        // If your server needs to send the initial game state, you'd load it here
-        // and send it ONLY to the socket that just joined.
     });
 
-    // 3. Listen for game state updates and broadcast ONLY to the room
-    socket.on('update-game-state', (data) => {
-        // Find all rooms this socket belongs to (should be one: the roomId)
+    // Handle generic game state updates
+    socket.on('update-game-state', ({ userId, data }) => {
+        // Find the room the socket is in (excluding its own socket ID room)
         const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
         
         if (roomToBroadcast) {
             // Broadcast the update ONLY to others in this specific room
-            socket.to(roomToBroadcast).emit('game-state-updated', data);
+            socket.to(roomToBroadcast).emit('game-state-updated', { userId, data });
         }
     });
 
-    // ... similarly update other events like 'update-turn-state', etc. ...
+    // Handle turn changes
+    socket.on('update-turn-state', (newState) => {
+        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        if (roomToBroadcast) {
+             // Broadcast to everyone in the room, including sender's client
+            io.to(roomToBroadcast).emit('turn-state-updated', newState);
+        }
+    });
+    
+    // Handle game reset
+    socket.on('reset-game-request', (data) => {
+        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        if (roomToBroadcast) {
+            io.to(roomToBroadcast).emit('game-reset', data);
+        }
+    });
+    
+    // Handle seat order changes
+    socket.on('update-seat-order', (newOrder) => {
+        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        if (roomToBroadcast) {
+            io.to(roomToBroadcast).emit('seat-order-updated', newOrder);
+        }
+    });
+
 
     socket.on('disconnect', () => {
         // Find the room the user was in before disconnecting
-        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
         
-        if (roomToBroadcast) {
+        rooms.forEach(roomToBroadcast => {
             socket.to(roomToBroadcast).emit('user-disconnected', socket.id);
             console.log(`User ${socket.id} disconnected from room: ${roomToBroadcast}`);
-        }
+        });
     });
 });
 
-// ... server listen ...
+// 6. START SERVER LISTENING
+// Global exception handler to diagnose startup crashes on Render
+process.on('uncaughtException', err => {
+    console.error('CRASH! UNCAUGHT EXCEPTION:', err);
+    process.exit(1); 
+});
+
+server.listen(PORT, () => {
+    console.log(`Server running on port ${PORT}. Frontend should connect to this port/URL.`);
+});
