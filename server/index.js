@@ -12,7 +12,7 @@ const PORT = process.env.PORT || 3001;
 // 2. SETUP EXPRESS AND CORS
 const app = express();
 // IMPORTANT: Replace 'https://YOUR-FRONTEND-URL.com' with the actual URL (e.g., from Vercel)
-const FRONTEND_URL = process.env.CLIENT_URL || 'http://localhost:3000'; 
+const FRONTEND_URL = process.env.CLIENT_URL || 'https://battle-mat-dusky.vercel.app/'; 
 
 app.use(cors({
     origin: FRONTEND_URL,
