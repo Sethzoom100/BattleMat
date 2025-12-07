@@ -1,7 +1,33 @@
 // server/index.js (Focus on the 'connection' handler)
 
 // ... other imports and setup ...
+// server/index.js
 
+// 1. IMPORT NECESSARY MODULES
+const { createServer } = require('http'); // For creating the base HTTP server
+const { Server } = require('socket.io');   // For creating the Socket.io server
+const express = require('express');        // For Express app
+const cors = require('cors');              // For handling cross-origin requests
+
+// 2. SETUP EXPRESS APP
+const app = express();
+app.use(cors());
+
+// 3. CREATE HTTP SERVER (Express app needs to be passed to this)
+const server = createServer(app);
+
+// 4. CREATE SOCKET.IO INSTANCE (The 'io' variable MUST be defined here)
+const io = new Server(server, {
+  cors: {
+    // This is the domain where your React frontend is hosted!
+    origin: "battle-mat-dusky.vercel.app", // **REPLACE THIS**
+    methods: ["GET", "POST"]
+  }
+});
+
+// Now, the 'io.on("connection", ...)' block should work.
+
+// io.on('connection', (socket) => { ... });
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
 
