@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
-const socket = io('http://localhost:3001');
+const socket = io('https://battlemat.onrender.com');
 
 // --- HELPER: Get or Generate Room ID ---
 const getRoomId = () => {
