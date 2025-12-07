@@ -2,7 +2,7 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
-const socket = io('https://battlemat.onrender.com');
+const socket = io('http://localhost:3001');
 
 // --- HELPER: Get or Generate Room ID ---
 const getRoomId = () => {
@@ -657,7 +657,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
 
       <div style={{fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold'}}>Commander Damage Taken</div>
       <div style={{overflowY: 'auto', flex: 1, paddingRight: '4px'}}>
-        {allPlayerIds.length <= 1 && <div style={{fontSize: '11px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '10px'}}>No opponents recorded.</div>}
+        {allPlayerIds.length <= 1 && <div style={{fontSize: '11px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '10px')}>No opponents recorded.</div>}
         
         {allPlayerIds.map(attackerId => {
           const attackerData = allGameState[attackerId] || {};
@@ -1261,7 +1261,14 @@ function App() {
   }, [handleMyLifeChange, passTurn]);
 
   useEffect(() => {
-    const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
+    const myPeer = new Peer(undefined, { 
+        // 🚨 FIX: Explicitly configure PeerJS for external hosting on Render/HTTPS
+        host: 'YOUR-RENDER-DOMAIN.onrender.com', // ⬅️ REPLACE WITH YOUR DOMAIN (e.g., my-signal-server.onrender.com)
+        port: 443,                                  // ⬅️ Secure port for WSS
+        path: '/peerjs',                            // ⬅️ Standard PeerJS path
+        secure: true,                               // ⬅️ MUST be true for HTTPS
+        config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } 
+    });
     peerRef.current = myPeer;
     
     // START WITH 16:9 HD RESOLUTION
