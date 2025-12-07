@@ -1,67 +1,46 @@
-const express = require('express');
-const app = express();
-const server = require('http').Server(app);
-const io = require('socket.io')(server, {
-  cors: {
-    origin: "*",
-    methods: ["GET", "POST"]
-  }
-});
+// server/index.js (Focus on the 'connection' handler)
 
-// Store seating arrangements in memory
-// Key: RoomID, Value: Array of UserIDs ['userA', 'userB', ...]
-const roomSeats = {};
+// ... other imports and setup ...
 
 io.on('connection', (socket) => {
-  
-  socket.on('join-room', (roomId, userId) => {
-    socket.join(roomId);
-    
-    // --- SEATING LOGIC ---
-    if (!roomSeats[roomId]) roomSeats[roomId] = [];
-    
-    // Add user if not already in the seat list
-    if (!roomSeats[roomId].includes(userId)) {
-        roomSeats[roomId].push(userId);
-    }
+    console.log('A user connected:', socket.id);
 
-    // 1. Broadcast the synchronized seat order to EVERYONE (including the new user)
-    io.in(roomId).emit('seat-order-updated', roomSeats[roomId]);
-    
-    // 2. Standard User Joined event (for WebRTC connection)
-    socket.to(roomId).emit('user-connected', userId);
+    // 1. Listen for the specific 'join-room' event sent by the client
+    socket.on('join-room', (roomId, userId) => {
+        
+        // --- CRITICAL FIX: Join the user to the specified room ---
+        socket.join(roomId);
+        console.log(`User ${userId} joined room: ${roomId}`);
+        
+        // 2. Broadcast to others in the SAME room
+        socket.to(roomId).emit('user-connected', userId);
+        
+        // If your server needs to send the initial game state, you'd load it here
+        // and send it ONLY to the socket that just joined.
+    });
 
-    // --- GAME LISTENERS ---
+    // 3. Listen for game state updates and broadcast ONLY to the room
     socket.on('update-game-state', (data) => {
-        socket.to(roomId).emit('game-state-updated', data);
+        // Find all rooms this socket belongs to (should be one: the roomId)
+        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        
+        if (roomToBroadcast) {
+            // Broadcast the update ONLY to others in this specific room
+            socket.to(roomToBroadcast).emit('game-state-updated', data);
+        }
     });
 
-    socket.on('update-turn-state', (newState) => {
-        socket.to(roomId).emit('turn-state-updated', newState);
-    });
-
-    socket.on('reset-game-request', (data) => {
-        io.in(roomId).emit('game-reset', data);
-    });
-
-    socket.on('update-seat-order', (newOrder) => {
-        // Update server memory
-        roomSeats[roomId] = newOrder;
-        // Broadcast new order to everyone
-        io.in(roomId).emit('seat-order-updated', newOrder);
-    });
+    // ... similarly update other events like 'update-turn-state', etc. ...
 
     socket.on('disconnect', () => {
-      // Remove user from seats
-      if (roomSeats[roomId]) {
-          roomSeats[roomId] = roomSeats[roomId].filter(id => id !== userId);
-          io.in(roomId).emit('seat-order-updated', roomSeats[roomId]);
-      }
-      socket.to(roomId).emit('user-disconnected', userId);
+        // Find the room the user was in before disconnecting
+        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
+        
+        if (roomToBroadcast) {
+            socket.to(roomToBroadcast).emit('user-disconnected', socket.id);
+            console.log(`User ${socket.id} disconnected from room: ${roomToBroadcast}`);
+        }
     });
-  });
 });
 
-server.listen(3001, () => {
-  console.log('✅ Game Logic Server running on port 3001');
-});
+// ... server listen ...
