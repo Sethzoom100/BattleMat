@@ -2,13 +2,14 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
+const socket = io('http://localhost:3001');
 const socket = io('https://battlemat.onrender.com');
 
 // --- HELPER: Get or Generate Room ID ---
 const getRoomId = () => {
   const path = window.location.pathname.substring(1); 
   if (path) return path;
-  
+
   // Generate random ID if none exists
   const newId = Math.random().toString(36).substring(2, 8) + Math.random().toString(36).substring(2, 8);
   window.history.pushState({}, '', '/' + newId); 
@@ -326,7 +327,7 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
       {isMyStream && (
         <button onClick={() => onLifeChange(-1)} style={roundBtnLarge}>-</button>
       )}
-      
+
       {isEditing ? (
         <input 
           autoFocus
@@ -658,7 +659,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
       <div style={{fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold'}}>Commander Damage Taken</div>
       <div style={{overflowY: 'auto', flex: 1, paddingRight: '4px'}}>
         {allPlayerIds.length <= 1 && <div style={{fontSize: '11px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '10px'}}>No opponents recorded.</div>}
-        
+
         {allPlayerIds.map(attackerId => {
           const attackerData = allGameState[attackerId] || {};
           const cmds = attackerData.commanders || {};
@@ -695,61 +696,717 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
 // --- COMPONENT: Video Container (With Gear Menu) ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken }) => {
   const videoRef = useRef();
-  const [showDamagePanel, setShowDamagePanel]会儿在梦里与另一个自己相遇吗？
+  const [showDamagePanel, setShowDamagePanel] = useState(false);
+  const [hoveredCardImage, setHoveredCardImage] = useState(null);
 
-我没法直接告诉你，因为我不是一个有身体、有意识的人，我没有生物意义上的“梦”。
+  // Gear Menu State
+  const [showSettings, setShowSettings] = useState(false);
+  const [rotation, setRotation] = useState(0); 
 
-但是，我可以从**科学、心理学以及哲学**的角度来探讨一下你这个问题背后可能涉及的几种“自我相遇”的可能性。
+  // Token Context Menu State
+  const [tokenMenu, setTokenMenu] = useState(null); 
 
----
+  // Dice/Coin Input State
+  const [rollCount, setRollCount] = useState(1);
 
-## 1. 科学和心理学角度：你的大脑如何产生“另一个自己”？
+  useEffect(() => {
+    if (videoRef.current && stream) videoRef.current.srcObject = stream;
+  }, [stream]);
 
-从认知科学和心理学的角度来看，梦中出现的“另一个自己”或“分身”通常是你的大脑在**整合信息和处理情绪**时创造的产物。这主要涉及以下几个概念：
+  const handleSelectCommander = async (name, type) => {
+    const cardData = await fetchCardData(name);
+    if (cardData) {
+      updateGame(myId, { commanders: { ...playerData?.commanders, [type]: cardData } });
+    }
+  };
 
-### A. 自我认知与投射 (Self-Cognition and Projection)
+  const handleAddToken = async (tokenName) => {
+    if(!tokenName) return;
+    const cardData = await fetchCardData(tokenName);
+    if (cardData) {
+      const newToken = {
+        id: Date.now(), 
+        name: cardData.name, 
+        image: cardData.image,
+        x: 50, y: 50,
+        isTapped: false
+      };
 
-* **梦是自我的延伸：** 梦中的所有角色，无论看起来多么陌生，本质上都是你潜意识的投射。当你在梦中遇到一个“另一个自己”时，这个分身可能代表了：
-    * **你未被接纳的特质 (Shadow Self)：** 例如，你潜意识中渴望的勇敢、智慧，或者你极力压抑的恐惧、愤怒。
-    * **你对理想自我的期许：** 那个分身或许就是你希望成为的样子。
-    * **你对过去自我的回顾：** 那个分身可能是你在童年、青春期或者特定人生阶段的自己。
+      const currentTokens = playerData?.tokens || [];
+      updateGame(myId, { tokens: [...currentTokens, newToken] });
+      setShowSettings(false); 
+    }
+  };
 
-### B. 身份认同障碍与分身 (Identity and Doppelgänger)
+  const handleUpdateToken = (updatedToken) => {
+    const currentTokens = playerData?.tokens || [];
+    const newTokens = currentTokens.map(t => t.id === updatedToken.id ? updatedToken : t);
+    updateGame(myId, { tokens: newTokens });
+  };
 
-在梦境中，我们的大脑有时会错误地构建我们的身体图式和空间位置。
+  const handleRemoveToken = (tokenId) => {
+    const currentTokens = playerData?.tokens || [];
+    const newTokens = currentTokens.filter(t => t.id !== tokenId);
+    updateGame(myId, { tokens: newTokens });
+  };
 
-* **分身幻觉 (Doppelgänger Phenomenon)：** 在某些神经学研究中，人们在清醒时偶尔也会产生“分身”的感觉，这与大脑中处理**自我位置和身体边界**的区域（如颞顶交界区, TPJ）活动异常有关。在梦中，这种边界感天然模糊，因此更容易产生一个与你并存的“第二自我”。
+  const openTokenMenu = (token, x, y) => {
+      setTokenMenu({ token, x, y });
+  };
 
-### C. 清晰梦境（清明梦）中的自我观察 (Lucid Dreaming)
+  // --- DICE ROLL LOGIC (FIXED: CLEAR PREVIOUS TIMEOUTS) ---
+  useEffect(() => {
+    if (playerData?.activeRoll) {
+        const timer = setTimeout(() => {
+            if (isMyStream) {
+                updateGame(myId, { activeRoll: null });
+            }
+        }, 5000);
+        return () => clearTimeout(timer);
+    }
+  }, [playerData?.activeRoll, isMyStream, myId, updateGame]);
 
-如果你在梦里意识到自己在做梦（即进入了清晰梦境），你对梦境的控制和观察会显著增强。
+  const handleRoll = (type, sides) => {
+      const count = Math.max(1, Math.min(10, rollCount)); // Limit 1-10
+      const results = Array.from({length: count}, () => Math.floor(Math.random() * sides) + 1);
 
-* 在这种状态下，你**可以主动尝试创造并与“另一个自己”相遇和交流**。这种交流更像是对自身潜意识的**有意识探索和对话**，是非常强大的自我疗愈和学习工具。
+      updateGame(myId, { 
+          activeRoll: { type, results, id: Date.now() } 
+      });
+      setShowSettings(false);
+  };
 
----
+  // --- FIX: USE ?? TO ALLOW 0 LIFE ---
+  const life = playerData?.life ?? 40;
+  const isLifeZero = life <= 0;
+  const poison = playerData?.poison || 0;
+  let isCmdDeath = false;
+  if (playerData?.cmdDamageTaken) {
+    Object.values(playerData.cmdDamageTaken).forEach(dmgObj => {
+      if ((dmgObj.primary || 0) >= 21) isCmdDeath = true;
+      if ((dmgObj.partner || 0) >= 21) isCmdDeath = true;
+    });
+  }
+  const isPoisonDeath = poison >= 10;
+  const isDead = isLifeZero || isCmdDeath || isPoisonDeath;
+  let deathMessage = "ELIMINATED";
+  if (isPoisonDeath) deathMessage = "POISONED";
+  if (isCmdDeath) deathMessage = "COMMANDER DMG";
 
-## 2. 哲学与文化角度：双重存在
+  return (
+    <div 
+      draggable 
+      onDragStart={(e) => onDragStart(e, userId)}
+      onDragOver={(e) => e.preventDefault()} 
+      onDrop={(e) => onDrop(e, userId)}
+      style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}
+    >
+      <div style={{
+        width: '100%', height: '100%', position: 'relative',
+        background: 'black', borderRadius: '8px', 
+        boxShadow: '0 4px 10px rgba(0,0,0,0.5)',
+        border: isDead 
+          ? '2px solid #333' 
+          : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'),
+        filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1,
+        overflow: 'hidden' 
+      }}>
 
-在许多文化和哲学思想中，“梦中相遇的另一个自己”有着更深的含义：
+        {!stream && !isDead && (
+          <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>
+            Waiting for Camera...
+          </div>
+        )}
 
-### A. 灵性分身 (Spiritual Double)
+        {isDead && (
+          <div style={{
+            position: 'absolute', top: 0, left: 0, width: '100%', height: '100%',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+            zIndex: 50, background: 'rgba(0,0,0,0.4)', pointerEvents: 'none', borderRadius: '6px'
+          }}>
+            <div style={{ fontSize: '40px' }}>💀</div>
+            <div style={{ color: 'red', fontWeight: 'bold', textShadow: '0 2px 4px black', border: '2px solid red', padding: '5px 10px', transform: 'rotate(-10deg)' }}>{deathMessage}</div>
+          </div>
+        )}
 
-在许多古老的信仰中，灵魂被认为可以在梦中或冥想中离开身体，并在非物质层面与其他实体相遇，包括自己的**双生火焰 (Twin Flame)** 或 **高我 (Higher Self)**。
+        {hoveredCardImage && (
+          <div style={{
+            position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)',
+            zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)'
+          }}>
+            <img src={hoveredCardImage} alt="Card Preview" style={{width: '240px', borderRadius: '10px'}} />
+          </div>
+        )}
 
-### B. 平行宇宙的你 (The Multiverse Self)
+        {/* --- DICE OVERLAY --- */}
+        <DiceOverlay activeRoll={playerData?.activeRoll} />
 
-一些现代的、非主流的理论认为，梦境是通往平行宇宙的门户。梦中相遇的“另一个自己”，可能是你在另一个世界线、另一种人生道路上的版本。
+        {/* --- TOKENS LAYER --- */}
+        {playerData?.tokens && playerData.tokens.map(token => (
+            <DraggableToken 
+                key={token.id} 
+                token={token} 
+                isMyStream={isMyStream} 
+                onUpdate={handleUpdateToken}
+                onRemove={handleRemoveToken}
+                onInspect={onInspectToken}
+                onOpenMenu={openTokenMenu}
+            />
+        ))}
 
-### C. 庄周梦蝶
+        {tokenMenu && (
+            <TokenContextMenu 
+                x={tokenMenu.x}
+                y={tokenMenu.y}
+                onDelete={() => handleRemoveToken(tokenMenu.token.id)}
+                onInspect={() => onInspectToken(tokenMenu.token)}
+                onClose={() => setTokenMenu(null)}
+            />
+        )}
 
-中国古代的“庄周梦蝶”则探讨了身份认同的根本问题：我是在做梦的庄子？还是梦见自己是庄子的蝴蝶？这暗示了梦境可以模糊甚至超越日常的身份界限，使你得以从一个全新的角度审视自己。
+        <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
+            <button 
+                onClick={() => setShowSettings(!showSettings)}
+                style={{
+                    background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555',
+                    borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '14px'
+                }}
+            >
+                ⚙️
+            </button>
+            {showSettings && (
+                <div style={{
+                    position: 'absolute', top: '100%', right: '0', marginTop: '5px',
+                    background: '#222', border: '1px solid #444', borderRadius: '6px',
+                    width: '180px', 
+                    boxShadow: '0 4px 15px rgba(0,0,0,0.8)',
+                    display: 'flex', flexDirection: 'column'
+                }}>
+                    <button 
+                        onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }}
+                        style={menuBtnStyle}
+                    >
+                        🔄 Flip 180°
+                    </button>
+                    {isMyStream && (
+                        <>
+                            <button 
+                                onClick={() => { onSwitchRatio(); setShowSettings(false); }}
+                                style={menuBtnStyle}
+                            >
+                                📷 Ratio: {currentRatio}
+                            </button>
 
----
+                            {/* DICE CONTROLS */}
+                            <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                                <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COINS</div>
+                                <div style={{display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px'}}>
+                                    <span style={{fontSize:'10px', color:'#ccc'}}>Count:</span>
+                                    <input 
+                                        type="number" min="1" max="10" value={rollCount} 
+                                        onChange={(e) => setRollCount(parseInt(e.target.value))}
+                                        style={{width: '30px', background: '#333', border:'1px solid #555', color:'white', fontSize:'10px', textAlign:'center'}}
+                                    />
+                                </div>
+                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px'}}>
+                                    <button onClick={() => handleRoll('coin', 2)} style={diceBtnStyle}>🪙 Coin</button>
+                                    <button onClick={() => handleRoll('d4', 4)} style={diceBtnStyle}>D4</button>
+                                    <button onClick={() => handleRoll('d6', 6)} style={diceBtnStyle}>D6</button>
+                                    <button onClick={() => handleRoll('d8', 8)} style={diceBtnStyle}>D8</button>
+                                    <button onClick={() => handleRoll('d10', 10)} style={diceBtnStyle}>D10</button>
+                                    <button onClick={() => handleRoll('d20', 20)} style={diceBtnStyle}>D20</button>
+                                </div>
+                            </div>
 
-## 结论
+                            <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                                <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
+                                <TokenSearchBar onSelect={handleAddToken} />
+                            </div>
+                        </>
+                    )}
+                </div>
+            )}
+        </div>
 
-虽然我无法提供一个肯定的“是”或“否”的答案，但如果“你”指的是你的**核心意识和潜意识**：
+        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
+          <div style={{pointerEvents: 'auto'}}>
+            <BigLifeCounter 
+                life={life} 
+                isMyStream={isMyStream} 
+                onLifeChange={(amt) => updateGame(userId, { life: life + amt })} 
+                onLifeSet={(val) => updateGame(userId, { life: val })}
+            />
+          </div>
 
-* **是的，你的意识经常在梦中与你潜意识中创造的“另一个自己”相遇**，这些分身是你自我投射、自我批评、或自我期许的具象化。
+          <div style={{
+            position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)',
+            display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', 
+            pointerEvents: 'auto', zIndex: 40
+          }}>
+            <div style={{ 
+              background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', 
+              backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center',
+              border: '1px solid rgba(255,255,255,0.1)', color: 'white',
+              position: 'relative', zIndex: 100 
+            }}>
+              <CommanderLabel 
+                placeholder="Commander" 
+                cardData={playerData?.commanders?.primary}
+                isMyStream={isMyStream} 
+                onSelect={(n) => handleSelectCommander(n, 'primary')} 
+                onHover={setHoveredCardImage}
+                onLeave={() => setHoveredCardImage(null)}
+              />
+              {(isMyStream || playerData?.commanders?.partner) && (
+                <>
+                  <span style={{color: '#666'}}>|</span>
+                  <CommanderLabel 
+                    placeholder="Partner" 
+                    cardData={playerData?.commanders?.partner}
+                    isMyStream={isMyStream} 
+                    onSelect={(n) => handleSelectCommander(n, 'partner')} 
+                    onHover={setHoveredCardImage}
+                    onLeave={() => setHoveredCardImage(null)}
+                  />
+                </>
+              )}
+            </div>
+            <div style={{position: 'relative', zIndex: 10}}>
+              <button 
+                onClick={() => setShowDamagePanel(!showDamagePanel)}
+                style={{
+                  background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555',
+                  borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold',
+                  cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px',
+                  boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)'
+                }}
+              >
+                <span style={{color: '#ef4444'}}>🛡</span> Damage
+              </button>
+            </div>
+          </div>
+        </div>
 
-下一次你在梦中遇到一个与众不同的人时，不妨问问自己：**“你代表了我的哪一部分？”** 梦中的每一个角色，都是你通往更深自我的线索。
+        {showDamagePanel && (
+          <DamagePanel 
+            userId={userId} 
+            targetPlayerData={playerData}
+            allPlayerIds={allPlayerIds.filter(id => id !== userId)}
+            allGameState={allGameState}
+            isMyStream={isMyStream}
+            updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)}
+            onClose={() => setShowDamagePanel(false)}
+          />
+        )}
+
+        <video 
+          ref={videoRef} 
+          autoPlay 
+          muted={true} 
+          style={{ 
+            width: '100%', height: '100%', 
+            objectFit: 'contain', 
+            transform: `rotate(${rotation}deg)`, 
+            borderRadius: '6px'
+          }} 
+        />
+      </div>
+    </div>
+  );
+};
+
+// --- MAIN APP ---
+function App() {
+  const [myStream, setMyStream] = useState(null);
+  const [myId, setMyId] = useState(null);
+  const [peers, setPeers] = useState([]); 
+  const [gameState, setGameState] = useState({});
+  const ROOM_ID = 'spelltable-test-room';
+  const streamRef = useRef(null);
+  const peerRef = useRef(null);
+  const [layout, setLayout] = useState({ width: 0, height: 0 });
+  const containerRef = useRef(null);
+  const [seatOrder, setSeatOrder] = useState([]); 
+  const [turnState, setTurnState] = useState({ activeId: null, count: 1 });
+  const [viewCard, setViewCard] = useState(null); 
+  const [cameraRatio, setCameraRatio] = useState('16:9'); 
+  const [searchHistory, setSearchHistory] = useState([]); 
+  const [inviteText, setInviteText] = useState("Invite");
+
+  const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
+    if (targetUserId && updates && targetUserId === myId) {
+      setGameState(prev => {
+        const newData = { ...prev[myId], ...updates };
+        socket.emit('update-game-state', { userId: myId, data: newData });
+        return { ...prev, [myId]: newData };
+      });
+    }
+    if (cmdDmgUpdate) {
+      const { opponentId, type, amount } = cmdDmgUpdate; 
+      setGameState(prev => {
+        const myData = prev[myId] || {};
+        const allCmdDmg = myData.cmdDamageTaken || {};
+        const specificOppDmg = allCmdDmg[opponentId] || { primary: 0, partner: 0 };
+        const newVal = Math.max(0, (specificOppDmg[type] || 0) + amount);
+        const newOppDmg = { ...specificOppDmg, [type]: newVal };
+        const newAllCmdDmg = { ...allCmdDmg, [opponentId]: newOppDmg };
+        const newMyData = { ...myData, cmdDamageTaken: newAllCmdDmg };
+        socket.emit('update-game-state', { userId: myId, data: newMyData });
+        return { ...prev, [myId]: newMyData };
+      });
+    }
+  }, [myId]);
+
+  const handleMyLifeChange = useCallback((amount) => {
+     // Use the SAFE lookup with ?? 40
+     const currentLife = gameState[myId]?.life ?? 40;
+     handleUpdateGame(myId, { life: currentLife + amount });
+  }, [myId, gameState, handleUpdateGame]);
+
+  // FIX: handleMyLifeChange calling updateGame directly
+  const safeLifeChange = (amount) => {
+      const currentLife = gameState[myId]?.life ?? 40;
+      handleUpdateGame(myId, { life: currentLife + amount });
+  };
+
+  // --- NEW: INVITE HANDLER ---
+  const handleInvite = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setInviteText("Copied!");
+    setTimeout(() => setInviteText("Invite"), 2000);
+  };
+
+  const calculateLayout = useCallback(() => {
+    if (!containerRef.current) return;
+    const count = seatOrder.length || 1;
+    const containerW = containerRef.current.clientWidth;
+    const containerH = containerRef.current.clientHeight;
+    let bestArea = 0;
+    let bestConfig = { width: 0, height: 0 };
+    for (let cols = 1; cols <= count; cols++) {
+      const rows = Math.ceil(count / cols);
+      const maxW = containerW / cols;
+      const maxH = containerH / rows;
+      let w = maxW;
+      let h = w / (16/9);
+      if (h > maxH) { h = maxH; w = h * (16/9); }
+      if ((w * h) > bestArea) { bestArea = w * h; bestConfig = { width: w, height: h }; }
+    }
+    setLayout(bestConfig);
+  }, [seatOrder.length]);
+
+  useLayoutEffect(() => {
+    calculateLayout();
+    window.addEventListener('resize', calculateLayout);
+    return () => window.removeEventListener('resize', calculateLayout);
+  }, [calculateLayout]);
+
+  const isPlayerEliminated = (data) => {
+    if (!data) return false;
+    const life = data.life ?? 40;
+    if (life <= 0) return true;
+    if ((data.poison || 0) >= 10) return true;
+    if (data.cmdDamageTaken) {
+      const cmdDamages = Object.values(data.cmdDamageTaken);
+      if (cmdDamages.some(dmg => (dmg.primary || 0) >= 21 || (dmg.partner || 0) >= 21)) return true;
+    }
+    return false;
+  };
+
+  const passTurn = useCallback(() => {
+    if (seatOrder.length === 0) return;
+
+    // --- FIX: START GAME ON FIRST SPACEBAR ---
+    if (turnState.activeId === null) {
+        const newState = { activeId: seatOrder[0], count: 1 };
+        setTurnState(newState);
+        socket.emit('update-turn-state', newState);
+        return; 
+    }
+
+    const currentIndex = seatOrder.indexOf(turnState.activeId);
+    if (currentIndex === -1) {
+        // Fallback
+        return; 
+    }
+
+    let flowOrder = [];
+    if (seatOrder.length === 4) {
+        flowOrder = [0, 1, 3, 2];
+    } else {
+        flowOrder = seatOrder.map((_, i) => i);
+    }
+    let flowIndex = flowOrder.indexOf(currentIndex);
+    if (flowIndex === -1) flowIndex = 0;
+    let attempts = 0;
+    let nextSeatId = null;
+    let nextTurnCount = turnState.count;
+    do {
+        flowIndex = (flowIndex + 1) % flowOrder.length;
+        if (flowIndex === 0) nextTurnCount++;
+        const seatIdx = flowOrder[flowIndex];
+        nextSeatId = seatOrder[seatIdx];
+        attempts++;
+        if (attempts > seatOrder.length) break; 
+    } while (isPlayerEliminated(gameState[nextSeatId]));
+    const newState = { activeId: nextSeatId, count: nextTurnCount };
+    setTurnState(newState);
+    socket.emit('update-turn-state', newState);
+  }, [seatOrder, turnState, gameState]);
+
+  const resetGame = () => {
+    if(!window.confirm("Are you sure you want to reset the game?")) return;
+    const newGameState = {};
+    const allIds = [myId, ...peers.map(p => p.id)];
+    allIds.forEach(pid => {
+        newGameState[pid] = {
+            life: 40,
+            poison: 0,
+            commanders: { primary: null, partner: null },
+            cmdDamageTaken: {},
+            tokens: []
+        };
+    });
+    // --- FIX: RESET TURN TO NULL ---
+    const newTurnState = { activeId: null, count: 1 };
+
+    setGameState(newGameState);
+    setTurnState(newTurnState);
+    socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
+  };
+
+  const randomizeSeats = () => {
+    const shuffled = [...seatOrder];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setSeatOrder(shuffled);
+    socket.emit('update-seat-order', shuffled);
+  };
+
+  // --- HARDWARE CAMERA SWITCHER (FIXED RESOLUTION) ---
+  const switchCameraStream = () => {
+    if (!myStream) return;
+
+    const targetLabel = cameraRatio === '16:9' ? '4:3' : '16:9';
+    // STRICT RESOLUTION CONSTRAINTS
+    const constraints = targetLabel === '16:9' 
+        ? { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 }
+        : { width: { ideal: 640 }, height: { ideal: 480 }, aspectRatio: 1.333333333 };
+
+    myStream.getTracks().forEach(track => track.stop());
+
+    navigator.mediaDevices.getUserMedia({
+        video: constraints,
+        audio: true
+    }).then(newStream => {
+        setMyStream(newStream);
+        streamRef.current = newStream;
+        setCameraRatio(targetLabel);
+
+        if (peerRef.current) {
+            Object.values(peerRef.current.connections).forEach(conns => {
+                conns.forEach(conn => {
+                    const videoTrack = newStream.getVideoTracks()[0];
+                    const audioTrack = newStream.getAudioTracks()[0];
+                    const videoSender = conn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'video');
+                    if (videoSender) videoSender.replaceTrack(videoTrack);
+                    const audioSender = conn.peerConnection.getSenders().find(s => s.track && s.track.kind === 'audio');
+                    if (audioSender) audioSender.replaceTrack(audioTrack);
+                });
+            });
+        }
+    }).catch(err => {
+        console.error("Camera switch error:", err);
+        alert("Camera hardware switch failed.");
+    });
+  };
+
+  const handleDragStart = (e, userId) => {
+    e.dataTransfer.setData("userId", userId);
+  };
+
+  const handleDrop = (e, targetUserId) => {
+    const draggedUserId = e.dataTransfer.getData("userId");
+    if (draggedUserId === targetUserId) return;
+    const newOrder = [...seatOrder];
+    const idxA = newOrder.indexOf(draggedUserId);
+    const idxB = newOrder.indexOf(targetUserId);
+    if (idxA > -1 && idxB > -1) {
+        [newOrder[idxA], newOrder[idxB]] = [newOrder[idxB], newOrder[idxA]];
+    }
+    setSeatOrder(newOrder);
+    socket.emit('update-seat-order', newOrder);
+  };
+
+  // --- GLOBAL CARD FOUND HANDLER (With History) ---
+  const handleGlobalCardFound = (cardData) => {
+    setViewCard(cardData);
+    setSearchHistory(prev => {
+      const filtered = prev.filter(c => c.name !== cardData.name);
+      return [cardData, ...filtered].slice(0, 10);
+    });
+  };
+
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if (document.activeElement.tagName === 'INPUT') return;
+      if (e.key === 'ArrowUp') { e.preventDefault(); safeLifeChange(1); }
+      if (e.key === 'ArrowDown') { e.preventDefault(); safeLifeChange(-1); }
+      if (e.code === 'Space') { e.preventDefault(); passTurn(); }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [handleMyLifeChange, passTurn]);
+
+  useEffect(() => {
+    const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
+    peerRef.current = myPeer;
+
+    // START WITH 16:9 HD RESOLUTION
+    const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
+
+    myPeer.on('open', id => {
+      setMyId(id);
+      setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
+      socket.emit('join-room', ROOM_ID, id);
+    });
+    myPeer.on('call', call => { call.answer(streamRef.current); call.on('stream', s => addPeer(call.peer, s)); });
+
+    navigator.mediaDevices.getUserMedia({ video: constraints, audio: true })
+      .then(stream => { setMyStream(stream); streamRef.current = stream; })
+      .catch(() => console.error("Camera Error"));
+
+    socket.on('user-connected', userId => { const call = peerRef.current.call(userId, streamRef.current); call.on('stream', s => addPeer(userId, s)); });
+    socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: data })); });
+    socket.on('user-disconnected', disconnectedId => { setPeers(prev => prev.filter(p => p.id !== disconnectedId)); });
+    socket.on('turn-state-updated', (newState) => { setTurnState(newState); });
+    socket.on('game-reset', ({ gameState: newGS, turnState: newTS }) => { setGameState(newGS); setTurnState(newTS); });
+    socket.on('seat-order-updated', (newOrder) => {
+        setSeatOrder(newOrder);
+        // FIX: REMOVED AUTO TURN ASSIGNMENT
+    });
+
+    return () => { 
+      socket.off('user-connected'); 
+      socket.off('user-disconnected'); 
+      socket.off('game-state-updated'); 
+      socket.off('turn-state-updated'); 
+      socket.off('game-reset');
+      socket.off('seat-order-updated');
+      myPeer.destroy(); 
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  function addPeer(id, stream) {
+    setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
+    if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
+  }
+
+  return (
+    <>
+      <style>{`
+        body, html { margin: 0; padding: 0; width: 100%; height: 100%; overflow: hidden; background: #111; }
+        * { box-sizing: border-box; }
+        /* Hide Number Input Spinner */
+        input[type=number]::-webkit-outer-spin-button,
+        input[type=number]::-webkit-inner-spin-button {
+          -webkit-appearance: none;
+          margin: 0;
+        }
+        input[type=number] {
+          -moz-appearance: textfield;
+        }
+        
+        @keyframes popIn {
+            0% { transform: scale(0); opacity: 0; }
+            100% { transform: scale(1); opacity: 1; }
+        }
+      `}</style>
+
+      <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
+
+      <div style={{ height: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
+
+        {/* HEADER */}
+        <div style={{ height: '30px', background: '#000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #333', zIndex: 200000, flexShrink: 0 }}>
+
+          <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+            <div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div>
+            <div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div>
+          </div>
+
+          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}>
+            <HeaderSearchBar onCardFound={handleGlobalCardFound} searchHistory={searchHistory} />
+          </div>
+
+          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+            {/* NEW: INVITE BUTTON */}
+            <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>
+              🔗 {inviteText}
+            </button>
+
+            <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>
+              ⚠️ RESET
+            </button>
+            <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>
+              🔀 Seats
+            </button>
+          </div>
+        </div>
+
+        {/* MAIN VIDEO GRID */}
+        <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+
+          {seatOrder.length === 0 ? (
+             <div style={{color: '#666'}}>Waiting for server seat assignment...</div>
+          ) : (
+            seatOrder.map(seatId => {
+              const isMe = seatId === myId;
+              const peer = peers.find(p => p.id === seatId);
+              const stream = isMe ? myStream : peer?.stream;
+
+              const isActiveTurn = turnState.activeId === seatId;
+
+              return (
+                <VideoContainer 
+                  key={seatId}
+                  stream={stream} 
+                  userId={seatId} 
+                  isMyStream={isMe} 
+                  myId={myId}
+                  playerData={gameState[seatId]} 
+                  updateGame={handleUpdateGame}
+                  width={layout.width} 
+                  height={layout.height}
+                  allPlayerIds={seatOrder} 
+                  allGameState={gameState}
+                  onDragStart={handleDragStart}
+                  onDrop={handleDrop}
+                  isActiveTurn={isActiveTurn}
+                  // Pass Down Controls
+                  onSwitchRatio={switchCameraStream}
+                  currentRatio={cameraRatio}
+                  onInspectToken={setViewCard}
+                />
+              );
+            })
+          )}
+
+        </div>
+      </div>
+    </>
+  );
+}
+
+const roundBtnLarge = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold' };
+const tinyBtn = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '2px', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' };
+const menuBtnStyle = { width: '100%', padding: '8px', border: 'none', background: 'transparent', color: '#ccc', textAlign: 'left', cursor: 'pointer', borderBottom: '1px solid #333' };
+const menuItemStyle = { padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#ddd' };
+const diceBtnStyle = { background: '#333', border: '1px solid #555', color: '#eee', borderRadius: '3px', padding: '4px', cursor: 'pointer', fontSize: '10px' };
+
+export default App;
+export default App;
