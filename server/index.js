@@ -1,5 +1,10 @@
 // server/index.js (Focus on the 'connection' handler)
-
+// Add this block to the top/bottom of your server file
+process.on('uncaughtException', err => {
+    console.error('CRASH! UNCAUGHT EXCEPTION:', err);
+    // Exit with code 1 (failure) so Render attempts a restart
+    process.exit(1); 
+});
 // ... other imports and setup ...
 // server/index.js
 
