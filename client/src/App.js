@@ -5,7 +5,6 @@ import Peer from 'peerjs';
 // --- CONNECTION SETUP ---
 const socket = io('https://battlemat.onrender.com');
 
-// --- HELPER: Get or Generate Room ID ---
 const getRoomId = () => {
   const path = window.location.pathname.substring(1); 
   if (path) return path;
@@ -13,10 +12,9 @@ const getRoomId = () => {
   window.history.pushState({}, '', '/' + newId); 
   return newId;
 };
-
 const ROOM_ID = getRoomId();
 
-// --- HELPER: Scryfall APIs ---
+// --- API HELPERS ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
@@ -27,7 +25,6 @@ const fetchCardData = async (cardName) => {
     return null;
   } catch (err) { return null; }
 };
-
 const fetchAnyCardAutocomplete = async (text) => {
   if (text.length < 2) return [];
   try {
@@ -36,16 +33,13 @@ const fetchAnyCardAutocomplete = async (text) => {
     return data.data || [];
   } catch (err) { return []; }
 };
-
 const fetchCommanderAutocomplete = async (text) => {
   if (text.length < 2) return [];
   try {
     const query = `name:/^${text}/ (t:legendary (t:creature OR t:vehicle) OR t:background) game:paper`;
     const res = await fetch(`https://api.scryfall.com/cards/search?q=${encodeURIComponent(query)}`);
     const data = await res.json();
-    if (data.data) {
-      return data.data.map(card => card.name).slice(0, 10);
-    }
+    if (data.data) return data.data.map(card => card.name).slice(0, 10);
     return [];
   } catch (err) { return []; }
 };
@@ -57,9 +51,7 @@ const DiceOverlay = ({ activeRoll }) => {
     <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, pointerEvents: 'none', flexDirection: 'column' }}>
       <div style={{ background: 'rgba(0,0,0,0.85)', padding: '15px', borderRadius: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', border: '1px solid #666', boxShadow: '0 0 20px rgba(0,0,0,0.8)', maxWidth: '80%' }}>
         {activeRoll.results.map((val, i) => (
-          <div key={i} className="dice-animation" style={{ width: '50px', height: '50px', borderRadius: activeRoll.type === 'coin' ? '50%' : '8px', background: activeRoll.type === 'coin' ? (val === 1 ? '#eab308' : '#94a3b8') : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '18px', border: '2px solid white', boxShadow: '0 4px 6px rgba(0,0,0,0.5)', textShadow: '0 2px 2px black', animation: 'popIn 0.3s ease-out forwards' }}>
-            {activeRoll.type === 'coin' ? (val === 1 ? 'H' : 'T') : val}
-          </div>
+          <div key={i} className="dice-animation" style={{ width: '50px', height: '50px', borderRadius: activeRoll.type === 'coin' ? '50%' : '8px', background: activeRoll.type === 'coin' ? (val === 1 ? '#eab308' : '#94a3b8') : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '18px', border: '2px solid white', boxShadow: '0 4px 6px rgba(0,0,0,0.5)', textShadow: '0 2px 2px black', animation: 'popIn 0.3s ease-out forwards' }}>{activeRoll.type === 'coin' ? (val === 1 ? 'H' : 'T') : val}</div>
         ))}
       </div>
     </div>
@@ -71,37 +63,11 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
   const [pos, setPos] = useState({ x: token.x, y: token.y });
   const dragStart = useRef({ x: 0, y: 0 });
   const hasMoved = useRef(false); 
-
   useEffect(() => { setPos({ x: token.x, y: token.y }); }, [token.x, token.y]);
-
-  const handleMouseDown = (e) => {
-    if (!isMyStream || e.button !== 0) return; 
-    e.stopPropagation(); e.preventDefault();
-    setIsDragging(true); hasMoved.current = false; 
-    dragStart.current = { x: e.clientX - pos.x, y: e.clientY - pos.y };
-  };
-
-  const handleMouseMove = useCallback((e) => {
-    if (!isDragging) return;
-    e.stopPropagation();
-    const currentX = e.clientX - dragStart.current.x;
-    const currentY = e.clientY - dragStart.current.y;
-    if (Math.abs(currentX - pos.x) > 2 || Math.abs(currentY - pos.y) > 2) hasMoved.current = true; 
-    setPos({ x: currentX, y: currentY });
-  }, [isDragging, pos.x, pos.y]);
-
-  const handleMouseUp = useCallback((e) => {
-    if (!isDragging) return;
-    e.stopPropagation(); setIsDragging(false);
-    if (hasMoved.current) onUpdate({ ...token, x: pos.x, y: pos.y });
-  }, [isDragging, pos, onUpdate, token]);
-
-  useEffect(() => {
-    if (isDragging) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); } 
-    else { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }
-    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-
+  const handleMouseDown = (e) => { if (!isMyStream || e.button !== 0) return; e.stopPropagation(); e.preventDefault(); setIsDragging(true); hasMoved.current = false; dragStart.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }; };
+  const handleMouseMove = useCallback((e) => { if (!isDragging) return; e.stopPropagation(); const currentX = e.clientX - dragStart.current.x; const currentY = e.clientY - dragStart.current.y; if (Math.abs(currentX - pos.x) > 2 || Math.abs(currentY - pos.y) > 2) hasMoved.current = true; setPos({ x: currentX, y: currentY }); }, [isDragging, pos.x, pos.y]);
+  const handleMouseUp = useCallback((e) => { if (!isDragging) return; e.stopPropagation(); setIsDragging(false); if (hasMoved.current) onUpdate({ ...token, x: pos.x, y: pos.y }); }, [isDragging, pos, onUpdate, token]);
+  useEffect(() => { if (isDragging) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); } else { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); } return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [isDragging, handleMouseMove, handleMouseUp]);
   return (
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ position: 'absolute', left: pos.x, top: pos.y, width: '110px', zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', transform: token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)', transition: isDragging ? 'none' : 'transform 0.2s' }}
@@ -125,14 +91,8 @@ const TokenSearchBar = ({ onSelect }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-
-  const handleChange = async (e) => {
-    const val = e.target.value; setQuery(val);
-    if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false);
-  };
-
+  const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = (name) => { setQuery(""); setShowDropdown(false); onSelect(name); };
-
   return (
     <div style={{ position: 'relative', width: '100%' }}>
       <input type="text" placeholder="Search Token..." value={query} onChange={handleChange} onKeyDown={(e) => e.key === 'Enter' && handleSelect(query)} onFocus={() => query.length > 2 && setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{width: '100%', fontSize: '11px', padding: '4px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '3px'}} />
@@ -150,7 +110,6 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [val, setVal] = useState(life);
   useEffect(() => { setVal(life); }, [life]);
   const handleFinish = () => { setIsEditing(false); const num = parseInt(val); if (!isNaN(num)) onLifeSet(num); else setVal(life); };
-
   return (
     <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 30, background: 'rgba(0,0,0,0.7)', borderRadius: '30px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(5px)', boxShadow: '0 4px 8px rgba(0,0,0,0.6)' }}>
       {isMyStream && <button onClick={() => onLifeChange(-1)} style={roundBtnLarge}>-</button>}
@@ -168,7 +127,6 @@ const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
   const [showHistory, setShowHistory] = useState(false);
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
-
   return (
     <div style={{ position: 'relative', width: '290px', zIndex: 9000, display: 'flex', gap: '5px' }}>
       <div style={{flex: 1, position: 'relative'}}>
@@ -200,7 +158,6 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   useEffect(() => { setQuery(cardData ? cardData.name : ""); }, [cardData]);
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchCommanderAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = (name) => { setQuery(name); setShowDropdown(false); onSelect(name); };
-
   if (!isMyStream && cardData) return <span onMouseEnter={() => onHover(cardData.image)} onMouseLeave={onLeave} style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666' }}>{cardData.name}</span>;
   if (isMyStream) return (
       <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -326,6 +283,7 @@ function App() {
   const [myStream, setMyStream] = useState(null);
   const [myId, setMyId] = useState(null);
   const [peers, setPeers] = useState([]); 
+  const peersRef = useRef({}); // SAFETY REF FOR CLEANUP
   const [gameState, setGameState] = useState({});
   const streamRef = useRef(null);
   const peerRef = useRef(null);
@@ -528,17 +486,16 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  // --- REORDERED INITIALIZATION LOGIC ---
   useEffect(() => {
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
 
-    // 1. GET CAMERA FIRST
+    // 1. GET CAMERA
     navigator.mediaDevices.getUserMedia({ video: constraints, audio: true })
       .then(stream => { 
           setMyStream(stream); 
           streamRef.current = stream; 
           
-          // 2. INITIALIZE PEER SECOND
+          // 2. SETUP PEER
           const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
           peerRef.current = myPeer;
 
@@ -546,35 +503,32 @@ function App() {
             setMyId(id);
             setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
-            
-            // 3. JOIN ROOM LAST (Only when everything is ready!)
+            // 3. JOIN ROOM AFTER CAMERA IS READY
             socket.emit('join-room', ROOM_ID, id);
           });
 
           myPeer.on('call', call => { 
-              // Now streamRef.current is GUARANTEED to be populated
               call.answer(streamRef.current); 
-              call.on('stream', s => addPeer(call.peer, s)); 
+              call.on('stream', s => addPeer(call.peer, s, call)); 
           });
-
       })
       .catch(() => console.error("Camera Error"));
 
     socket.on('user-connected', userId => { 
         if (!peerRef.current || !streamRef.current) return;
         const call = peerRef.current.call(userId, streamRef.current); 
-        call.on('stream', s => addPeer(userId, s)); 
-        setSeatOrder(prev => { if(prev.includes(userId)) return prev; return [...prev, userId]; });
+        call.on('stream', s => addPeer(userId, s, call)); 
     });
 
     socket.on('user-disconnected', disconnectedId => {
+      // CLOSE THE CALL TO STOP FROZEN VIDEO
+      if (peersRef.current[disconnectedId]) {
+          peersRef.current[disconnectedId].close();
+          delete peersRef.current[disconnectedId];
+      }
       setPeers(prev => prev.filter(p => p.id !== disconnectedId));
       setSeatOrder(prev => prev.filter(id => id !== disconnectedId));
-      setGameState(prev => {
-          const newState = { ...prev };
-          delete newState[disconnectedId];
-          return newState;
-      });
+      setGameState(prev => { const n = { ...prev }; delete n[disconnectedId]; return n; });
     });
 
     socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: data })); });
@@ -590,13 +544,13 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  function addPeer(id, stream) {
+  function addPeer(id, stream, call) {
+    // SAVE CALL OBJECT FOR CLEANUP
+    if (call) peersRef.current[id] = call;
+    
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
-    setSeatOrder(prev => {
-        if(prev.includes(id)) return prev;
-        return [...prev, id];
-    });
+    setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
 
   return (
