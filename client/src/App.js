@@ -16,7 +16,7 @@ const getRoomId = () => {
 
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS ---
+// --- HELPER: Scryfall APIs ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
@@ -528,30 +528,45 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
+  // --- REORDERED INITIALIZATION LOGIC ---
   useEffect(() => {
-    const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
-    peerRef.current = myPeer;
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
 
-    myPeer.on('open', id => {
-      setMyId(id);
-      setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
-      setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
-      socket.emit('join-room', ROOM_ID, id);
-    });
-    myPeer.on('call', call => { call.answer(streamRef.current); call.on('stream', s => addPeer(call.peer, s)); });
-
+    // 1. GET CAMERA FIRST
     navigator.mediaDevices.getUserMedia({ video: constraints, audio: true })
-      .then(stream => { setMyStream(stream); streamRef.current = stream; })
+      .then(stream => { 
+          setMyStream(stream); 
+          streamRef.current = stream; 
+          
+          // 2. INITIALIZE PEER SECOND
+          const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
+          peerRef.current = myPeer;
+
+          myPeer.on('open', id => {
+            setMyId(id);
+            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
+            setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
+            
+            // 3. JOIN ROOM LAST (Only when everything is ready!)
+            socket.emit('join-room', ROOM_ID, id);
+          });
+
+          myPeer.on('call', call => { 
+              // Now streamRef.current is GUARANTEED to be populated
+              call.answer(streamRef.current); 
+              call.on('stream', s => addPeer(call.peer, s)); 
+          });
+
+      })
       .catch(() => console.error("Camera Error"));
 
     socket.on('user-connected', userId => { 
+        if (!peerRef.current || !streamRef.current) return;
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s)); 
         setSeatOrder(prev => { if(prev.includes(userId)) return prev; return [...prev, userId]; });
     });
 
-    // --- CRITICAL FRONTEND FIX: FORCEFULLY REMOVE DISCONNECTED USERS ---
     socket.on('user-disconnected', disconnectedId => {
       setPeers(prev => prev.filter(p => p.id !== disconnectedId));
       setSeatOrder(prev => prev.filter(id => id !== disconnectedId));
@@ -570,7 +585,7 @@ function App() {
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
-      myPeer.destroy(); 
+      if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
