@@ -11,11 +11,16 @@ const PORT = process.env.PORT || 3001;
 
 // 2. SETUP EXPRESS AND CORS
 const app = express();
-// IMPORTANT: Replace 'https://YOUR-FRONTEND-URL.com' with the actual URL (e.g., from Vercel)
-const FRONTEND_URL = process.env.CLIENT_URL || 'https://battle-mat-dusky.vercel.app/'; 
+
+// WE USE AN ARRAY TO ALLOW BOTH LOCALHOST (FOR TESTING) AND VERCEL (FOR PROD)
+const ALLOWED_ORIGINS = [
+    "http://localhost:3000",
+    "http://localhost:3001",
+    "https://battle-mat-dusky.vercel.app" // IMPORTANT: No trailing slash!
+];
 
 app.use(cors({
-    origin: FRONTEND_URL,
+    origin: ALLOWED_ORIGINS,
     methods: ["GET", "POST"]
 }));
 
@@ -23,7 +28,7 @@ app.use(cors({
 const server = createServer(app);
 const io = new Server(server, {
     cors: {
-        origin: FRONTEND_URL,
+        origin: ALLOWED_ORIGINS,
         methods: ["GET", "POST"]
     }
 });
@@ -38,8 +43,6 @@ app.get('/', (req, res) => {
 // 5. SOCKET.IO ROOMS AND GAME LOGIC
 io.on('connection', (socket) => {
     console.log('A user connected:', socket.id);
-
-    // [PEERJS SERVER LOGIC WOULD GO HERE IF HOSTED SEPARATELY]
 
     // Listen for the client joining a specific room (ROOM_ID from client URL)
     socket.on('join-room', (roomId, userId) => {
