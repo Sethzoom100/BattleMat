@@ -2,6 +2,8 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
+// --- CONNECTION SETUP ---
+// We only use the production URL now. The localhost one is removed.
 const socket = io('https://battlemat.onrender.com');
 
 // --- HELPER: Get or Generate Room ID ---
