@@ -1,21 +1,15 @@
 // server/index.js
 
-// 1. IMPORT NECESSARY MODULES
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const express = require('express');
 const cors = require('cors');
 
-// Define the port (Render uses the PORT env var)
 const PORT = process.env.PORT || 3001; 
 
-// 2. SETUP "BULLETPROOF" CORS
-// This configuration allows ANY website to connect.
-// It solves the "trailing slash" issue permanently.
+// ALLOWED ORIGINS (Update this if your URL changes)
 const corsOptions = {
     origin: function (origin, callback) {
-        // null origin means the request is from a server/mobile app (allow it)
-        // true means "reflect the origin" (allow the website asking)
         callback(null, true);
     },
     methods: ["GET", "POST"],
@@ -23,73 +17,87 @@ const corsOptions = {
 };
 
 const app = express();
-
-// Apply CORS to Express
 app.use(cors(corsOptions));
 
-// 3. CREATE SERVER & SOCKET
 const server = createServer(app);
 const io = new Server(server, {
-    cors: corsOptions // Apply CORS to Socket.io
+    cors: corsOptions
 });
 
-// 4. HEALTH CHECK ROUTE
+// --- CRITICAL FIX: TRACK SOCKETS TO ROOMS ---
+// This map remembers which room a socketID belongs to.
+// This ensures we can notify the room even after the socket disconnects.
+const socketToRoom = {};
+
 app.get('/', (req, res) => {
-    res.send('BattleMat Signaling Server Running (CORS Fixed)');
+    res.send('BattleMat Signaling Server Running (Ghost Fix Applied)');
 });
 
-// 5. SOCKET.IO LOGIC
 io.on('connection', (socket) => {
-    console.log('A user connected:', socket.id);
+    console.log('User connected:', socket.id);
 
     socket.on('join-room', (roomId, userId) => {
+        // 1. Join the socket room
         socket.join(roomId);
+        
+        // 2. RECORD THE MAPPING (Fixes the ghost camera issue)
+        socketToRoom[socket.id] = roomId;
+        
         console.log(`User ${userId} joined room: ${roomId}`);
+        
+        // 3. Tell others a new user is here
         socket.to(roomId).emit('user-connected', userId);
     });
 
     socket.on('update-game-state', ({ userId, data }) => {
-        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
-        if (roomToBroadcast) {
-            socket.to(roomToBroadcast).emit('game-state-updated', { userId, data });
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            socket.to(roomId).emit('game-state-updated', { userId, data });
         }
     });
 
     socket.on('update-turn-state', (newState) => {
-        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
-        if (roomToBroadcast) {
-            io.to(roomToBroadcast).emit('turn-state-updated', newState);
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            io.to(roomId).emit('turn-state-updated', newState);
         }
     });
     
     socket.on('reset-game-request', (data) => {
-        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
-        if (roomToBroadcast) {
-            io.to(roomToBroadcast).emit('game-reset', data);
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            io.to(roomId).emit('game-reset', data);
         }
     });
     
     socket.on('update-seat-order', (newOrder) => {
-        const [roomToBroadcast] = Array.from(socket.rooms).filter(r => r !== socket.id);
-        if (roomToBroadcast) {
-            io.to(roomToBroadcast).emit('seat-order-updated', newOrder);
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            io.to(roomId).emit('seat-order-updated', newOrder);
         }
     });
 
+    // --- DISCONNECT HANDLER (The Fix) ---
     socket.on('disconnect', () => {
-        const rooms = Array.from(socket.rooms).filter(r => r !== socket.id);
-        rooms.forEach(roomToBroadcast => {
-            socket.to(roomToBroadcast).emit('user-disconnected', socket.id);
-        });
+        // 1. Look up which room they were in
+        const roomId = socketToRoom[socket.id];
+        
+        if (roomId) {
+            // 2. Tell everyone in that room to remove this specific ID
+            socket.to(roomId).emit('user-disconnected', socket.id);
+            console.log(`User ${socket.id} disconnected from room ${roomId}`);
+            
+            // 3. Clean up the map
+            delete socketToRoom[socket.id];
+        }
     });
 });
 
-// 6. START SERVER
 process.on('uncaughtException', err => {
     console.error('CRASH! UNCAUGHT EXCEPTION:', err);
     process.exit(1); 
 });
 
 server.listen(PORT, () => {
-    console.log(`Server running on port ${PORT}. Accepting all CORS origins.`);
+    console.log(`Server running on port ${PORT}`);
 });
