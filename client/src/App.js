@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
-const socket = io('http://localhost:3001');
 const socket = io('https://battlemat.onrender.com');
 
 // --- HELPER: Get or Generate Room ID ---
@@ -1408,5 +1407,4 @@ const menuBtnStyle = { width: '100%', padding: '8px', border: 'none', background
 const menuItemStyle = { padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#ddd' };
 const diceBtnStyle = { background: '#333', border: '1px solid #555', color: '#eee', borderRadius: '3px', padding: '4px', cursor: 'pointer', fontSize: '10px' };
 
-export default App;
 export default App;
