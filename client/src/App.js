@@ -801,13 +801,7 @@ function App() {
     myPeer.on('open', id => {
       setMyId(id);
       setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
-      
-      // CRITICAL: Ensure I am in the seat order immediately
-      setSeatOrder(prev => {
-         if(prev.includes(id)) return prev;
-         return [...prev, id];
-      });
-
+      setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
       socket.emit('join-room', ROOM_ID, id);
     });
     myPeer.on('call', call => { call.answer(streamRef.current); call.on('stream', s => addPeer(call.peer, s)); });
@@ -819,16 +813,23 @@ function App() {
     socket.on('user-connected', userId => { 
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s)); 
-        
-        // CRITICAL: Ensure NEW users are added to seat order immediately
-        setSeatOrder(prev => {
-            if(prev.includes(userId)) return prev;
-            return [...prev, userId];
-        });
+        setSeatOrder(prev => { if(prev.includes(userId)) return prev; return [...prev, userId]; });
+    });
+
+    socket.on('user-disconnected', disconnectedId => {
+      // 1. Remove from peers
+      setPeers(prev => prev.filter(p => p.id !== disconnectedId));
+      // 2. Remove from seat grid immediately (Fixes frozen video)
+      setSeatOrder(prev => prev.filter(id => id !== disconnectedId));
+      // 3. Remove from game state (cleanup)
+      setGameState(prev => {
+          const newState = { ...prev };
+          delete newState[disconnectedId];
+          return newState;
+      });
     });
 
     socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: data })); });
-    socket.on('user-disconnected', disconnectedId => { setPeers(prev => prev.filter(p => p.id !== disconnectedId)); });
     socket.on('turn-state-updated', (newState) => { setTurnState(newState); });
     socket.on('game-reset', ({ gameState: newGS, turnState: newTS }) => { setGameState(newGS); setTurnState(newTS); });
     socket.on('seat-order-updated', (newOrder) => { setSeatOrder(newOrder); });
@@ -845,8 +846,7 @@ function App() {
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
     
-    // --- FIX: VISIBILITY OF EXISTING USERS ---
-    // If we receive a stream, force this user into the seat list immediately
+    // --- CRITICAL VISIBILITY FIX: Force existing users into seat list when stream arrives ---
     setSeatOrder(prev => {
         if(prev.includes(id)) return prev;
         return [...prev, id];
