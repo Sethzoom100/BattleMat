@@ -802,7 +802,7 @@ function App() {
       setMyId(id);
       setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
       
-      // --- CRITICAL FIX: AUTOMATICALLY ASSIGN MYSELF A SEAT ---
+      // CRITICAL: Ensure I am in the seat order immediately
       setSeatOrder(prev => {
          if(prev.includes(id)) return prev;
          return [...prev, id];
@@ -820,7 +820,7 @@ function App() {
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s)); 
         
-        // --- CRITICAL FIX: AUTOMATICALLY ADD NEW USERS TO SEAT ORDER ---
+        // CRITICAL: Ensure NEW users are added to seat order immediately
         setSeatOrder(prev => {
             if(prev.includes(userId)) return prev;
             return [...prev, userId];
@@ -844,6 +844,13 @@ function App() {
   function addPeer(id, stream) {
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
+    
+    // --- FIX: VISIBILITY OF EXISTING USERS ---
+    // If we receive a stream, force this user into the seat list immediately
+    setSeatOrder(prev => {
+        if(prev.includes(id)) return prev;
+        return [...prev, id];
+    });
   }
 
   return (
