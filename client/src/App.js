@@ -6,9 +6,17 @@ import Peer from 'peerjs';
 const socket = io('https://battlemat.onrender.com');
 
 // --- ASSETS ---
-const MONARCH_CARD_IMG = "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg";
-// UPDATED: Fixed broken Initiative link (Points to Undercity Dungeon side by default)
-const INITIATIVE_CARD_IMG = "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg";
+const MONARCH_CARD = { 
+    name: "The Monarch", 
+    image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" 
+};
+
+// Double-faced definition for Initiative (Token + Dungeon)
+const INITIATIVE_CARD = { 
+    name: "The Initiative // Undercity", 
+    image: "https://cards.scryfall.io/large/front/5/7/57a445d0-44f1-4966-924d-9d261e1b82eb.jpg", // The Initiative Token
+    backImage: "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg" // Undercity Dungeon
+};
 
 const getRoomId = () => {
   const path = window.location.pathname.substring(1); 
@@ -19,14 +27,14 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS (UPDATED FOR DOUBLE FACED CARDS) ---
+// --- API HELPERS ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
     const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cardName)}`);
     const data = await res.json();
     
-    // Check for Double-Faced Cards (Transform, MDFC, Tokens like Initiative)
+    // Handle Double-Faced Cards (Transform / MDFC)
     if (data.card_faces && data.card_faces.length > 1 && data.card_faces[0].image_uris) {
         return { 
             name: data.name, 
@@ -35,10 +43,10 @@ const fetchCardData = async (cardName) => {
         };
     }
     
-    // Standard Single-Faced Card
+    // Standard Card
     if (data.image_uris) return { name: data.name, image: data.image_uris.normal };
     
-    // Fallback for some weird edge cases (Adventure cards sometimes store images on main object)
+    // Fallback
     if (data.card_faces && data.image_uris) return { name: data.name, image: data.image_uris.normal };
 
     return null;
@@ -279,30 +287,18 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-// --- UPDATED: CARD MODAL WITH FLIP SUPPORT ---
+// --- UPDATED: CARD MODAL (SIDE-BY-SIDE SUPPORT) ---
 const CardModal = ({ cardData, onClose }) => {
-  const [isFlipped, setIsFlipped] = useState(false);
-  useEffect(() => { setIsFlipped(false); }, [cardData]);
-  
   if (!cardData) return null;
-  
-  const currentImage = isFlipped ? cardData.backImage : cardData.image;
-
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
-      <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '30px', height: '30px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
-        <img src={currentImage} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '90vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        
-        {/* --- FLIP BUTTON (ONLY SHOWS IF BACK IMAGE EXISTS) --- */}
+      <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
+        {/* Front Face */}
+        <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+        {/* Back Face (If exists) */}
         {cardData.backImage && (
-            <button onClick={() => setIsFlipped(!isFlipped)} style={{
-                marginTop: '15px', padding: '8px 20px', fontSize: '16px', fontWeight: 'bold',
-                background: '#2563eb', color: 'white', border: 'none', borderRadius: '25px',
-                cursor: 'pointer', boxShadow: '0 4px 10px black', display: 'flex', alignItems: 'center', gap: '8px'
-            }}>
-                🔄 Flip Card
-            </button>
+            <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
         )}
       </div>
     </div>
@@ -316,10 +312,11 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   useEffect(() => { setQuery(cardData ? cardData.name : ""); }, [cardData]);
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchCommanderAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = (name) => { setQuery(name); setShowDropdown(false); onSelect(name); };
-  if (!isMyStream && cardData) return <span onMouseEnter={() => onHover(cardData.image)} onMouseLeave={onLeave} style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666' }}>{cardData.name}</span>;
+  // UPDATED: Pass full cardData to hover, not just image string
+  if (!isMyStream && cardData) return <span onMouseEnter={() => onHover(cardData)} onMouseLeave={onLeave} style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666' }}>{cardData.name}</span>;
   if (isMyStream) return (
       <div style={{ position: 'relative', display: 'inline-block' }}>
-        <input type="text" placeholder={placeholder} value={query} onChange={handleChange} onKeyDown={(e) => e.key === 'Enter' && handleSelect(query)} onMouseEnter={() => cardData && onHover(cardData.image)} onMouseLeave={onLeave} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ background: 'transparent', border: 'none', color: 'white', fontWeight: 'bold', width: '120px', fontSize: '14px', outline: 'none', textShadow: '0 1px 2px black', textAlign: 'center' }} />
+        <input type="text" placeholder={placeholder} value={query} onChange={handleChange} onKeyDown={(e) => e.key === 'Enter' && handleSelect(query)} onMouseEnter={() => cardData && onHover(cardData)} onMouseLeave={onLeave} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ background: 'transparent', border: 'none', color: 'white', fontWeight: 'bold', width: '120px', fontSize: '14px', outline: 'none', textShadow: '0 1px 2px black', textAlign: 'center' }} />
         {showDropdown && suggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: '50%', transform: 'translateX(-50%)', width: '160px', background: '#222', border: '1px solid #444', maxHeight: '200px', overflowY: 'auto', zIndex: 1000, textAlign: 'left', boxShadow: '0 4px 20px rgba(0,0,0,0.9)' }}>{suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '8px', fontSize: '12px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{name}</div>)}</div>}
       </div>
     );
@@ -352,11 +349,10 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// --- UPDATED VIDEO CONTAINER TO HANDLE CLICKABLE ICONS ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
-  const [hoveredCardImage, setHoveredCardImage] = useState(null);
+  const [hoveredCard, setHoveredCard] = useState(null); // UPDATED: Holds object now, not string
   const [showSettings, setShowSettings] = useState(false);
   const [rotation, setRotation] = useState(0); 
   const [tokenMenu, setTokenMenu] = useState(null); 
@@ -370,12 +366,10 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const handleUpdateToken = (updatedToken) => { updateGame(myId, { tokens: (playerData?.tokens || []).map(t => t.id === updatedToken.id ? updatedToken : t) }); };
   const handleRemoveToken = (tokenId) => { updateGame(myId, { tokens: (playerData?.tokens || []).filter(t => t.id !== tokenId) }); };
   
-  // --- CLICK HANDLER FOR STATUS ICONS (OPENS MODAL) ---
-  const handleStatusClick = async (type) => {
-      // Fetch fresh data to ensure we get both faces (Front/Back)
-      const cardName = type === 'monarch' ? 'The Monarch' : 'Undercity // The Initiative';
-      const data = await fetchCardData(cardName);
-      if (data) onInspectToken(data); // Opens the CardModal with this data
+  // --- CLICK HANDLER FOR STATUS ICONS ---
+  const handleStatusClick = (type) => {
+      const data = type === 'monarch' ? MONARCH_CARD : INITIATIVE_CARD;
+      onInspectToken(data);
   };
 
   const handleRollAction = () => {
@@ -410,26 +404,33 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
-            {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
+            
+            {/* --- UPDATED HOVER DISPLAY: SUPPORTS SIDE-BY-SIDE --- */}
+            {hoveredCard && (
+                <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)', display: 'flex', gap: '5px' }}>
+                    <img src={hoveredCard.image} alt="Card" style={{width: '240px', borderRadius: '10px'}} />
+                    {hoveredCard.backImage && <img src={hoveredCard.backImage} alt="Card Back" style={{width: '240px', borderRadius: '10px'}} />}
+                </div>
+            )}
+
             <DiceOverlay activeRoll={playerData?.activeRoll} />
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
-            {/* --- UPDATED: STATUS ICONS MOVED DOWN & CLICKABLE --- */}
             <div style={{position: 'absolute', top: '80px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
                         onClick={() => handleStatusClick('monarch')}
-                        onMouseEnter={() => setHoveredCardImage(MONARCH_CARD_IMG)} 
-                        onMouseLeave={() => setHoveredCardImage(null)}
+                        onMouseEnter={() => setHoveredCard(MONARCH_CARD)} 
+                        onMouseLeave={() => setHoveredCard(null)}
                         style={{fontSize: '24px', cursor: 'pointer', filter: 'drop-shadow(0 2px 4px black)'}}
                     >👑</div>
                 )}
                 {playerData?.isInitiative && (
                     <div 
                         onClick={() => handleStatusClick('initiative')}
-                        onMouseEnter={() => setHoveredCardImage(INITIATIVE_CARD_IMG)} 
-                        onMouseLeave={() => setHoveredCardImage(null)}
+                        onMouseEnter={() => setHoveredCard(INITIATIVE_CARD)} 
+                        onMouseLeave={() => setHoveredCard(null)}
                         style={{fontSize: '24px', cursor: 'pointer', filter: 'drop-shadow(0 2px 4px black)'}}
                     >🏰</div>
                 )}
@@ -476,8 +477,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
-                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} />
-                {(isMyStream || playerData?.commanders?.partner) && <><span style={{color: '#666'}}>|</span><CommanderLabel placeholder="Partner" cardData={playerData?.commanders?.partner} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'partner')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} /></>}
+                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} />
+                {(isMyStream || playerData?.commanders?.partner) && <><span style={{color: '#666'}}>|</span><CommanderLabel placeholder="Partner" cardData={playerData?.commanders?.partner} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'partner')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} /></>}
                 </div>
                 <div style={{position: 'relative', zIndex: 10}}><button onClick={() => setShowDamagePanel(!showDamagePanel)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}><span style={{color: '#ef4444'}}>🛡</span> Damage</button></div>
             </div>
