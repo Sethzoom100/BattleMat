@@ -60,16 +60,59 @@ const DiceOverlay = ({ activeRoll }) => {
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
-  const dragStart = useRef({ x: 0, y: 0 });
+  const dragOffset = useRef({ x: 0, y: 0 });
+  const parentRect = useRef(null);
   const hasMoved = useRef(false); 
   useEffect(() => { setPos({ x: token.x, y: token.y }); }, [token.x, token.y]);
-  const handleMouseDown = (e) => { if (!isMyStream || e.button !== 0) return; e.stopPropagation(); e.preventDefault(); setIsDragging(true); hasMoved.current = false; dragStart.current = { x: e.clientX - pos.x, y: e.clientY - pos.y }; };
-  const handleMouseMove = useCallback((e) => { if (!isDragging) return; e.stopPropagation(); const currentX = e.clientX - dragStart.current.x; const currentY = e.clientY - dragStart.current.y; if (Math.abs(currentX - pos.x) > 2 || Math.abs(currentY - pos.y) > 2) hasMoved.current = true; setPos({ x: currentX, y: currentY }); }, [isDragging, pos.x, pos.y]);
-  const handleMouseUp = useCallback((e) => { if (!isDragging) return; e.stopPropagation(); setIsDragging(false); if (hasMoved.current) onUpdate({ ...token, x: pos.x, y: pos.y }); }, [isDragging, pos, onUpdate, token]);
-  useEffect(() => { if (isDragging) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); } else { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); } return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }; }, [isDragging, handleMouseMove, handleMouseUp]);
+  
+  const handleMouseDown = (e) => {
+    if (!isMyStream || e.button !== 0) return; 
+    e.stopPropagation(); e.preventDefault();
+    setIsDragging(true); hasMoved.current = false; 
+    
+    const rect = e.currentTarget.getBoundingClientRect();
+    const centerX = rect.left + (rect.width / 2);
+    const centerY = rect.top + (rect.height / 2);
+
+    dragOffset.current = { x: e.clientX - centerX, y: e.clientY - centerY };
+    parentRect.current = e.currentTarget.offsetParent.getBoundingClientRect();
+  };
+
+  const handleMouseMove = useCallback((e) => {
+    if (!isDragging || !parentRect.current) return;
+    e.stopPropagation();
+    hasMoved.current = true;
+    
+    const rawCenterX = e.clientX - parentRect.current.left - dragOffset.current.x;
+    const rawCenterY = e.clientY - parentRect.current.top - dragOffset.current.y;
+
+    const pctX = (rawCenterX / parentRect.current.width) * 100;
+    const pctY = (rawCenterY / parentRect.current.height) * 100;
+
+    setPos({ x: pctX, y: pctY });
+  }, [isDragging]);
+
+  const handleMouseUp = useCallback((e) => {
+    if (!isDragging) return;
+    e.stopPropagation(); setIsDragging(false);
+    if (hasMoved.current) onUpdate({ ...token, x: pos.x, y: pos.y });
+  }, [isDragging, pos, onUpdate, token]);
+
+  useEffect(() => {
+    if (isDragging) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); } 
+    else { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }
+    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
+  }, [isDragging, handleMouseMove, handleMouseUp]);
+
   return (
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
-      style={{ position: 'absolute', left: pos.x, top: pos.y, width: '110px', zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', transform: token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)', transition: isDragging ? 'none' : 'transform 0.2s' }}
+      style={{ 
+        position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
+        width: '12%', minWidth: '50px', 
+        zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
+        transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
+        transition: isDragging ? 'none' : 'transform 0.2s' 
+      }}
     >
       <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
     </div>
@@ -119,21 +162,45 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
+// --- UPDATED HEADER SEARCH BAR (GRID HISTORY) ---
 const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
+  
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
+  
   return (
     <div style={{ position: 'relative', width: '290px', zIndex: 9000, display: 'flex', gap: '5px' }}>
       <div style={{flex: 1, position: 'relative'}}>
         <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { setShowHistory(false); if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
         {showDropdown && suggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1a1a1a', border: '1px solid #444', maxHeight: '400px', overflowY: 'auto', zIndex: 100001, boxShadow: '0 10px 40px rgba(0,0,0,0.9)' }}>{suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{name}</div>)}</div>}
       </div>
-      <div style={{position: 'relative'}}><button onClick={() => { setShowHistory(!showHistory); setShowDropdown(false); }} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
-      {showHistory && <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', marginTop: '5px', background: '#1a1a1a', border: '1px solid #444', zIndex: 100002 }}>{searchHistory.map((card, i) => <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{card.name}</div>)}</div>}</div>
+      <div style={{position: 'relative'}}>
+        <button onClick={() => { setShowHistory(!showHistory); setShowDropdown(false); }} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
+        {showHistory && (
+          <div style={{ 
+            position: 'absolute', top: '100%', right: 0, width: '380px', marginTop: '5px', 
+            background: '#1a1a1a', border: '1px solid #444', zIndex: 100002,
+            display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px', padding: '8px',
+            borderRadius: '4px', boxShadow: '0 10px 30px rgba(0,0,0,0.9)'
+          }}>
+             {searchHistory.map((card, i) => (
+               <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ cursor: 'pointer' }}>
+                  <img 
+                    src={card.image} 
+                    alt={card.name} 
+                    style={{ width: '100%', borderRadius: '4px', transition: 'transform 0.1s', border: '1px solid #444' }} 
+                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.15)'}
+                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
+                  />
+               </div>
+             ))}
+          </div>
+        )}
+      </div>
     </div>
   );
 };
@@ -201,6 +268,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const [rotation, setRotation] = useState(0); 
   const [tokenMenu, setTokenMenu] = useState(null); 
   const [rollCount, setRollCount] = useState(1);
+  const [selectedDice, setSelectedDice] = useState('d20');
 
   useEffect(() => { if (videoRef.current && stream) videoRef.current.srcObject = stream; }, [stream]);
 
@@ -208,7 +276,16 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const handleAddToken = async (tokenName) => { if(!tokenName) return; const cardData = await fetchCardData(tokenName); if (cardData) { updateGame(myId, { tokens: [...(playerData?.tokens || []), { id: Date.now(), name: cardData.name, image: cardData.image, x: 50, y: 50, isTapped: false }] }); setShowSettings(false); } };
   const handleUpdateToken = (updatedToken) => { updateGame(myId, { tokens: (playerData?.tokens || []).map(t => t.id === updatedToken.id ? updatedToken : t) }); };
   const handleRemoveToken = (tokenId) => { updateGame(myId, { tokens: (playerData?.tokens || []).filter(t => t.id !== tokenId) }); };
-  const handleRoll = (type, sides) => { const count = Math.max(1, Math.min(10, rollCount)); updateGame(myId, { activeRoll: { type, results: Array.from({length: count}, () => Math.floor(Math.random() * sides) + 1), id: Date.now() } }); setShowSettings(false); };
+  
+  const handleRollAction = () => {
+      let sides = 20;
+      if (selectedDice === 'coin') sides = 2;
+      else sides = parseInt(selectedDice.substring(1)); 
+      const count = Math.max(1, Math.min(10, rollCount));
+      const results = Array.from({length: count}, () => Math.floor(Math.random() * sides) + 1);
+      updateGame(myId, { activeRoll: { type: selectedDice, results, id: Date.now() } });
+      setShowSettings(false);
+  };
   
   useEffect(() => {
     if (playerData?.activeRoll) {
@@ -220,58 +297,93 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const life = playerData?.life ?? 40;
   const isDead = life <= 0 || (playerData?.poison || 0) >= 10;
 
+  // --- CRITICAL FIX: EXACT ASPECT RATIO CALCULATION (THE STAGE) ---
+  const TARGET_RATIO = 1.777777778; // 16:9
+  
+  // Calculate max dimensions that fit inside the container
+  let finalW = width;
+  let finalH = width / TARGET_RATIO;
+
+  // If too tall, scale down based on height
+  if (finalH > height) {
+      finalH = height;
+      finalW = height * TARGET_RATIO;
+  }
+
   return (
     <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
-      <div style={{ width: '100%', height: '100%', position: 'relative', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
-        {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
-        {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
-        {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
-        <DiceOverlay activeRoll={playerData?.activeRoll} />
-        {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
-        {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onClose={() => setTokenMenu(null)} />}
+      
+      {/* OUTER WRAPPER: Centers the Stage */}
+      <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
         
-        <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
-            <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
-            {showSettings && (
-                <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '5px', background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column' }}>
-                    <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
-                    {isMyStream && (
-                        <>
-                            <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                            <div style={{padding: '8px', borderTop: '1px solid #444'}}>
-                                <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE</div>
-                                <div style={{display: 'flex', alignItems: 'center', gap: '5px', marginBottom: '5px'}}>
-                                    <span style={{fontSize:'10px', color:'#ccc'}}>Count:</span>
-                                    <input type="number" min="1" max="10" value={rollCount} onChange={(e) => setRollCount(parseInt(e.target.value))} style={{width: '30px', background: '#333', border:'1px solid #555', color:'white', fontSize:'10px', textAlign:'center'}} />
+        {/* --- THE STAGE: EXACT DIMENSIONS --- */}
+        {/* Everything (video, tokens, overlay) lives inside this strictly sized box. */}
+        <div style={{ 
+            width: finalW, 
+            height: finalH, 
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            
+            {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
+            
+            {/* VIDEO: FORCE FILL (No gaps allowed) */}
+            <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
+            
+            {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
+            {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
+            <DiceOverlay activeRoll={playerData?.activeRoll} />
+            {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
+            {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onClose={() => setTokenMenu(null)} />}
+            
+            <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
+                <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
+                {showSettings && (
+                    <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '5px', background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column' }}>
+                        <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
+                        {isMyStream && (
+                            <>
+                                <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
+                                
+                                <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                                    <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
+                                    <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
+                                        <input type="number" min="1" max="10" value={rollCount} onChange={(e) => setRollCount(parseInt(e.target.value))} style={{width: '35px', background: '#333', border:'1px solid #555', color:'white', fontSize:'11px', textAlign:'center', borderRadius: '3px', padding: '4px'}} />
+                                        <select value={selectedDice} onChange={(e) => setSelectedDice(e.target.value)} style={{flex: 1, background: '#333', border: '1px solid #555', color: 'white', fontSize: '11px', borderRadius: '3px', padding: '4px', cursor: 'pointer'}}>
+                                            <option value="d20">D20</option>
+                                            <option value="d12">D12</option>
+                                            <option value="d10">D10</option>
+                                            <option value="d8">D8</option>
+                                            <option value="d6">D6</option>
+                                            <option value="d4">D4</option>
+                                            <option value="coin">🪙 Coin</option>
+                                        </select>
+                                    </div>
+                                    <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
                                 </div>
-                                <div style={{display: 'grid', gridTemplateColumns: '1fr 1fr 1fr', gap: '4px'}}>
-                                    <button onClick={() => handleRoll('coin', 2)} style={diceBtnStyle}>🪙 Coin</button>
-                                    <button onClick={() => handleRoll('d6', 6)} style={diceBtnStyle}>D6</button>
-                                    <button onClick={() => handleRoll('d20', 20)} style={diceBtnStyle}>D20</button>
-                                </div>
-                            </div>
-                            <div style={{padding: '8px', borderTop: '1px solid #444'}}>
-                                <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
-                                <TokenSearchBar onSelect={handleAddToken} />
-                            </div>
-                        </>
-                    )}
-                </div>
-            )}
-        </div>
 
-        <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
-          <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
-          <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
-            <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
-              <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} />
-              {(isMyStream || playerData?.commanders?.partner) && <><span style={{color: '#666'}}>|</span><CommanderLabel placeholder="Partner" cardData={playerData?.commanders?.partner} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'partner')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} /></>}
+                                <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                                    <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
+                                    <TokenSearchBar onSelect={handleAddToken} />
+                                </div>
+                            </>
+                        )}
+                    </div>
+                )}
             </div>
-            <div style={{position: 'relative', zIndex: 10}}><button onClick={() => setShowDamagePanel(!showDamagePanel)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}><span style={{color: '#ef4444'}}>🛡</span> Damage</button></div>
-          </div>
+
+            <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
+            <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
+            <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
+                <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
+                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} />
+                {(isMyStream || playerData?.commanders?.partner) && <><span style={{color: '#666'}}>|</span><CommanderLabel placeholder="Partner" cardData={playerData?.commanders?.partner} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'partner')} onHover={setHoveredCardImage} onLeave={() => setHoveredCardImage(null)} /></>}
+                </div>
+                <div style={{position: 'relative', zIndex: 10}}><button onClick={() => setShowDamagePanel(!showDamagePanel)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}><span style={{color: '#ef4444'}}>🛡</span> Damage</button></div>
+            </div>
+            </div>
+            {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClose={() => setShowDamagePanel(false)} />}
         </div>
-        {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClose={() => setShowDamagePanel(false)} />}
-        <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'contain', transform: `rotate(${rotation}deg)`, borderRadius: '6px' }} />
       </div>
     </div>
   );
@@ -329,6 +441,12 @@ function App() {
       });
     }
   }, [myId]);
+
+  const handleGlobalCardFound = (cardData) => {
+    setViewCard(cardData);
+    // --- UPDATED: KEEP 12 CARDS FOR THE 2x6 GRID ---
+    setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 12));
+  };
 
   const handleMyLifeChange = useCallback((amount) => {
      const currentLife = gameState[myId]?.life ?? 40;
@@ -480,11 +598,6 @@ function App() {
     socket.emit('update-seat-order', newOrder);
   };
 
-  const handleGlobalCardFound = (cardData) => {
-    setViewCard(cardData);
-    setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 10));
-  };
-
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (document.activeElement.tagName === 'INPUT') return;
@@ -495,6 +608,19 @@ function App() {
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
+
+  // --- HEARTBEAT SYNC FIX ---
+  useEffect(() => {
+    const interval = setInterval(() => {
+        if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
+            socket.emit('update-game-state', {
+                userId: myIdRef.current,
+                data: gameStateRef.current[myIdRef.current]
+            });
+        }
+    }, 2000); 
+    return () => clearInterval(interval);
+  }, []);
 
   // --- REORDERED INITIALIZATION LOGIC (NO DEPS) ---
   useEffect(() => {
@@ -510,12 +636,15 @@ function App() {
 
           myPeer.on('open', id => {
             setMyId(id);
-            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
+            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
             socket.emit('join-room', ROOM_ID, id);
             
-            // --- SYNC REQUEST (Trigger immediate sync) ---
-            socket.emit('sync-request');
+            // --- SYNC FIX: SEND OWN STATE TO SERVER MEMORY ON JOIN ---
+            socket.emit('update-game-state', {
+                userId: id,
+                data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' }
+            });
           });
 
           myPeer.on('call', call => { 
@@ -530,20 +659,24 @@ function App() {
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s, call)); 
         
-        // Seat Order Sync logic
         const currentOrder = seatOrderRef.current;
         const newOrder = currentOrder.includes(userId) ? currentOrder : [...currentOrder, userId];
         socket.emit('update-seat-order', newOrder);
         setSeatOrder(newOrder); 
-    });
 
-    // --- NEW SYNC LISTENER ---
-    socket.on('sync-requested', () => {
+        // --- CRITICAL SYNC FIX: RESEND MY DATA TO NEW USERS ---
         if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
             socket.emit('update-game-state', {
                 userId: myIdRef.current,
                 data: gameStateRef.current[myIdRef.current]
             });
+        }
+    });
+
+    // --- RECEIVE FULL STATE SYNC FROM SERVER ---
+    socket.on('full-state-sync', (allData) => {
+        if(allData) {
+            setGameState(prev => ({ ...prev, ...allData }));
         }
     });
 
@@ -557,14 +690,13 @@ function App() {
       setGameState(prev => { const n = { ...prev }; delete n[disconnectedId]; return n; });
     });
 
-    socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: data })); });
+    socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: { ...prev[userId], ...data } })); });
     socket.on('turn-state-updated', (newState) => { setTurnState(newState); });
     socket.on('game-reset', ({ gameState: newGS, turnState: newTS }) => { setGameState(newGS); setTurnState(newTS); });
     
     // --- CRITICAL FIX 2: NEVER DELETE MYSELF ON SYNC ---
     socket.on('seat-order-updated', (newOrder) => { 
         setSeatOrder(prev => {
-            // If the incoming list is missing ME, add ME back in.
             if(myIdRef.current && !newOrder.includes(myIdRef.current)){
                 return [...newOrder, myIdRef.current];
             }
@@ -575,6 +707,7 @@ function App() {
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
+      socket.off('full-state-sync'); 
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
