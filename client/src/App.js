@@ -45,34 +45,100 @@ const fetchCommanderAutocomplete = async (text) => {
 };
 
 // --- COMPONENTS ---
+
+// --- UPDATED LOBBY WITH CAMERA PREVIEW ---
 const Lobby = ({ onJoin }) => {
+  const [step, setStep] = useState('mode'); // 'mode' or 'setup'
+  const [videoDevices, setVideoDevices] = useState([]);
+  const [selectedDeviceId, setSelectedDeviceId] = useState('');
+  const [previewStream, setPreviewStream] = useState(null);
+  const videoRef = useRef(null);
+
+  // Get list of cameras
+  useEffect(() => {
+    if (step === 'setup') {
+      navigator.mediaDevices.enumerateDevices().then(devices => {
+        const videos = devices.filter(d => d.kind === 'videoinput');
+        setVideoDevices(videos);
+        if (videos.length > 0) setSelectedDeviceId(videos[0].deviceId);
+      });
+    }
+  }, [step]);
+
+  // Handle Stream for Preview
+  useEffect(() => {
+    if (step === 'setup' && selectedDeviceId) {
+      const constraints = { 
+        video: { deviceId: { exact: selectedDeviceId }, aspectRatio: 1.777777778, width: { ideal: 1280 }, height: { ideal: 720 } }, 
+        audio: true 
+      };
+      
+      // Stop previous stream tracks to release camera
+      if (previewStream) previewStream.getTracks().forEach(t => t.stop());
+
+      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
+        setPreviewStream(stream);
+        if (videoRef.current) videoRef.current.srcObject = stream;
+      }).catch(err => console.error("Preview Error:", err));
+    }
+    // Cleanup on unmount or change
+    return () => {
+       // We don't stop tracks here automatically because we might want to PASS them to the game
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [step, selectedDeviceId]);
+
+  const handleEnterGame = () => {
+    onJoin(false, previewStream); // Pass the active stream so we don't have to restart it
+  };
+
+  const handleSpectate = () => {
+    if (previewStream) previewStream.getTracks().forEach(t => t.stop()); // Kill preview if they switch to spectate
+    onJoin(true, null);
+  };
+
+  if (step === 'mode') {
+    return (
+      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
+        <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
+        <div style={{ display: 'flex', gap: '30px' }}>
+          <button onClick={() => setStep('setup')} style={lobbyBtnStyle}>🎥 Join as Player</button>
+          <button onClick={handleSpectate} style={{...lobbyBtnStyle, background: '#333', color: '#ccc', border: '1px solid #555'}}>👁️ Spectate Only</button>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div style={{
-      position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
-      background: '#111', display: 'flex', flexDirection: 'column', 
-      alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999
-    }}>
-      <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
-      <div style={{ display: 'flex', gap: '30px' }}>
-        <button onClick={() => onJoin(false)} style={{
-          padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer',
-          background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px',
-          boxShadow: '0 4px 15px rgba(37, 99, 235, 0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px'
-        }} onMouseEnter={e => e.target.style.transform = 'scale(1.05)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>
-          🎥 Join as Player
-        </button>
+    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0f0f0f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
+      <h2 style={{color: '#ccc', marginBottom: '20px'}}>Setup Camera</h2>
+      
+      <div style={{ width: '640px', height: '360px', background: 'black', borderRadius: '8px', overflow: 'hidden', border: '2px solid #333', boxShadow: '0 10px 30px black', position: 'relative', marginBottom: '20px' }}>
+        <video ref={videoRef} autoPlay muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
+        <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
+      </div>
+
+      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
+        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Camera Source</label>
+        <select 
+            value={selectedDeviceId} 
+            onChange={(e) => setSelectedDeviceId(e.target.value)}
+            style={{ padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none' }}
+        >
+            {videoDevices.map(device => (
+                <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${device.deviceId.slice(0,5)}...`}</option>
+            ))}
+        </select>
         
-        <button onClick={() => onJoin(true)} style={{
-          padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer',
-          background: '#333', color: '#ccc', border: '1px solid #555', borderRadius: '10px',
-          boxShadow: '0 4px 15px rgba(0,0,0,0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px'
-        }} onMouseEnter={e => e.target.style.transform = 'scale(1.05)'} onMouseLeave={e => e.target.style.transform = 'scale(1)'}>
-          👁️ Spectate Only
-        </button>
+        <button onClick={handleEnterGame} style={{...lobbyBtnStyle, marginTop: '10px', width: '100%', fontSize: '1.2rem', padding: '15px'}}>✅ Enter Battle</button>
+        <button onClick={() => setStep('mode')} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', textDecoration: 'underline'}}>Back</button>
       </div>
     </div>
   );
 };
+
+const lobbyBtnStyle = { padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer', background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' };
+
 
 const DiceOverlay = ({ activeRoll }) => {
   if (!activeRoll) return null;
@@ -680,10 +746,12 @@ function App() {
     return () => clearInterval(interval);
   }, [isSpectator]);
 
-  // --- NEW: Join Game Logic (Moved out of useEffect) ---
-  const joinGame = (spectatorMode) => {
+  // --- UPDATED JOIN LOGIC ---
+  const joinGame = (spectatorMode, existingStream = null) => {
     setHasJoined(true);
     setIsSpectator(spectatorMode);
+    
+    // Standard constraints just in case we need to re-fetch (shouldn't happen for existingStream)
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
 
     const initPeer = (stream = null) => {
@@ -709,14 +777,20 @@ function App() {
         });
 
         myPeer.on('call', call => { 
-            call.answer(stream); // If spectator, stream is null (receive only)
+            call.answer(stream); 
             call.on('stream', s => addPeer(call.peer, s, call)); 
         });
     };
 
     if (spectatorMode) {
         initPeer(null); 
+    } else if (existingStream) {
+        // --- USE THE STREAM SELECTED IN LOBBY ---
+        setMyStream(existingStream);
+        streamRef.current = existingStream;
+        initPeer(existingStream);
     } else {
+        // Fallback (rarely used now that Lobby forces selection)
         navigator.mediaDevices.getUserMedia({ video: constraints, audio: true })
           .then(stream => { 
               setMyStream(stream); 
@@ -726,7 +800,7 @@ function App() {
           .catch(err => {
               console.error("Camera Error or denied", err);
               alert("Camera access denied or unavailable. Joining as Spectator.");
-              joinGame(true); // Fallback to spectator
+              joinGame(true); 
           });
     }
   };
@@ -751,7 +825,6 @@ function App() {
             setSeatOrder(newOrder); 
         }
 
-        // Resend my state to them (so they know my life total etc)
         if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
             socket.emit('update-game-state', { userId: myIdRef.current, data: gameStateRef.current[myIdRef.current] });
         }
@@ -772,8 +845,6 @@ function App() {
     
     socket.on('seat-order-updated', (newOrder) => { 
         setSeatOrder(prev => {
-            // If I am a PLAYER, I ensure I am in the list.
-            // If I am a SPECTATOR, I should NOT be in the list.
             if(myIdRef.current && !newOrder.includes(myIdRef.current) && !isSpectator){
                 return [...newOrder, myIdRef.current];
             }
@@ -788,13 +859,12 @@ function App() {
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []); // Logic relies on refs/funcs, so empty dependency is safe here for global listeners
+  }, []); 
 
   function addPeer(id, stream, call) {
     if (call) peersRef.current[id] = call;
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
-    // Safety check: Only add to local seat order if we haven't already
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
 
@@ -818,7 +888,6 @@ function App() {
           <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
-            {/* Only allow RESET and Random Seats if NOT a spectator (or allow all, up to preference) */}
             {!isSpectator && (
                 <>
                 <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
