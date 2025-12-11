@@ -7,7 +7,7 @@ const socket = io('https://battlemat.onrender.com');
 
 // --- ASSETS ---
 const MONARCH_CARD_IMG = "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg";
-// UPDATED: Fixed link to "Undercity" (The Initiative Dungeon)
+// UPDATED: Fixed broken Initiative link (Points to Undercity Dungeon side by default)
 const INITIATIVE_CARD_IMG = "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg";
 
 const getRoomId = () => {
@@ -19,17 +19,32 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS ---
+// --- API HELPERS (UPDATED FOR DOUBLE FACED CARDS) ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
     const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cardName)}`);
     const data = await res.json();
+    
+    // Check for Double-Faced Cards (Transform, MDFC, Tokens like Initiative)
+    if (data.card_faces && data.card_faces.length > 1 && data.card_faces[0].image_uris) {
+        return { 
+            name: data.name, 
+            image: data.card_faces[0].image_uris.normal,
+            backImage: data.card_faces[1].image_uris.normal 
+        };
+    }
+    
+    // Standard Single-Faced Card
     if (data.image_uris) return { name: data.name, image: data.image_uris.normal };
-    if (data.card_faces) return { name: data.name, image: data.card_faces[0].image_uris.normal };
+    
+    // Fallback for some weird edge cases (Adventure cards sometimes store images on main object)
+    if (data.card_faces && data.image_uris) return { name: data.name, image: data.image_uris.normal };
+
     return null;
   } catch (err) { return null; }
 };
+
 const fetchAnyCardAutocomplete = async (text) => {
   if (text.length < 2) return [];
   try {
@@ -51,7 +66,6 @@ const fetchCommanderAutocomplete = async (text) => {
 
 // --- COMPONENTS ---
 
-// --- LOBBY ---
 const Lobby = ({ onJoin }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -265,13 +279,31 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
+// --- UPDATED: CARD MODAL WITH FLIP SUPPORT ---
 const CardModal = ({ cardData, onClose }) => {
+  const [isFlipped, setIsFlipped] = useState(false);
+  useEffect(() => { setIsFlipped(false); }, [cardData]);
+  
   if (!cardData) return null;
+  
+  const currentImage = isFlipped ? cardData.backImage : cardData.image;
+
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
-      <div style={{position: 'relative'}} onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '30px', height: '30px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black' }}>✕</button>
-        <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '90vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+      <div style={{position: 'relative', display: 'flex', flexDirection: 'column', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} style={{ position: 'absolute', top: '-15px', right: '-15px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '30px', height: '30px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
+        <img src={currentImage} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '90vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+        
+        {/* --- FLIP BUTTON (ONLY SHOWS IF BACK IMAGE EXISTS) --- */}
+        {cardData.backImage && (
+            <button onClick={() => setIsFlipped(!isFlipped)} style={{
+                marginTop: '15px', padding: '8px 20px', fontSize: '16px', fontWeight: 'bold',
+                background: '#2563eb', color: 'white', border: 'none', borderRadius: '25px',
+                cursor: 'pointer', boxShadow: '0 4px 10px black', display: 'flex', alignItems: 'center', gap: '8px'
+            }}>
+                🔄 Flip Card
+            </button>
+        )}
       </div>
     </div>
   );
@@ -320,6 +352,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
+// --- UPDATED VIDEO CONTAINER TO HANDLE CLICKABLE ICONS ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -337,6 +370,14 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const handleUpdateToken = (updatedToken) => { updateGame(myId, { tokens: (playerData?.tokens || []).map(t => t.id === updatedToken.id ? updatedToken : t) }); };
   const handleRemoveToken = (tokenId) => { updateGame(myId, { tokens: (playerData?.tokens || []).filter(t => t.id !== tokenId) }); };
   
+  // --- CLICK HANDLER FOR STATUS ICONS (OPENS MODAL) ---
+  const handleStatusClick = async (type) => {
+      // Fetch fresh data to ensure we get both faces (Front/Back)
+      const cardName = type === 'monarch' ? 'The Monarch' : 'Undercity // The Initiative';
+      const data = await fetchCardData(cardName);
+      if (data) onInspectToken(data); // Opens the CardModal with this data
+  };
+
   const handleRollAction = () => {
       let sides = 20;
       if (selectedDice === 'coin') sides = 2;
@@ -374,20 +415,22 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
-            {/* --- UPDATED: STATUS ICONS MOVED DOWN --- */}
+            {/* --- UPDATED: STATUS ICONS MOVED DOWN & CLICKABLE --- */}
             <div style={{position: 'absolute', top: '80px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
+                        onClick={() => handleStatusClick('monarch')}
                         onMouseEnter={() => setHoveredCardImage(MONARCH_CARD_IMG)} 
                         onMouseLeave={() => setHoveredCardImage(null)}
-                        style={{fontSize: '24px', cursor: 'help', filter: 'drop-shadow(0 2px 4px black)'}}
+                        style={{fontSize: '24px', cursor: 'pointer', filter: 'drop-shadow(0 2px 4px black)'}}
                     >👑</div>
                 )}
                 {playerData?.isInitiative && (
                     <div 
+                        onClick={() => handleStatusClick('initiative')}
                         onMouseEnter={() => setHoveredCardImage(INITIATIVE_CARD_IMG)} 
                         onMouseLeave={() => setHoveredCardImage(null)}
-                        style={{fontSize: '24px', cursor: 'help', filter: 'drop-shadow(0 2px 4px black)'}}
+                        style={{fontSize: '24px', cursor: 'pointer', filter: 'drop-shadow(0 2px 4px black)'}}
                     >🏰</div>
                 )}
             </div>
