@@ -523,21 +523,26 @@ function App() {
       .catch(() => console.error("Camera Error"));
 
     socket.on('user-connected', userId => { 
-        if (!peerRef.current || !streamRef.current) return;
-        const call = peerRef.current.call(userId, streamRef.current); 
-        call.on('stream', s => addPeer(userId, s, call)); 
-        
-        // --- SYNC LOGIC ---
+        // 1. SYNC STATE IMMEDIATELY (Don't wait for video)
+        // Check if we know who we are and have state to share
         if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
-            socket.emit('update-game-state', { userId: myIdRef.current, data: gameStateRef.current[myIdRef.current] });
+            socket.emit('update-game-state', {
+                userId: myIdRef.current,
+                data: gameStateRef.current[myIdRef.current]
+            });
         }
         socket.emit('update-turn-state', turnStateRef.current);
         
-        // --- CRITICAL FIX 1: CALCULATE NEW ORDER BEFORE SENDING ---
+        // Seat Order Sync logic
         const currentOrder = seatOrderRef.current;
         const newOrder = currentOrder.includes(userId) ? currentOrder : [...currentOrder, userId];
         socket.emit('update-seat-order', newOrder);
-        setSeatOrder(newOrder); // Update myself locally too
+        setSeatOrder(newOrder); 
+
+        // 2. NOW HANDLE VIDEO
+        if (!peerRef.current || !streamRef.current) return;
+        const call = peerRef.current.call(userId, streamRef.current); 
+        call.on('stream', s => addPeer(userId, s, call)); 
     });
 
     socket.on('user-disconnected', disconnectedId => {
