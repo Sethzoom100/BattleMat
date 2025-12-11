@@ -1,6 +1,7 @@
 import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from 'react';
 import io from 'socket.io-client';
 import Peer from 'peerjs';
+import Tesseract from 'tesseract.js';
 
 const socket = io('https://battlemat.onrender.com');
 
@@ -57,7 +58,6 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
-// --- DRAGGABLE TOKEN (FIXED: BUTTONS HIDDEN IF NOT OWNER) ---
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -105,7 +105,6 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Handle Counter Clicks (SAFETY CHECK ADDED)
   const handleCounterChange = (e, amount) => {
       e.stopPropagation(); 
       e.preventDefault();
@@ -118,7 +117,7 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        width: '10%', minWidth: '45px', 
+        width: '12%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -126,8 +125,6 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     >
       <div style={{position: 'relative', width: '100%'}}>
         <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
-        
-        {/* --- GENERIC COUNTER (ONLY SHOW BUTTONS IF MY STREAM) --- */}
         {token.counter !== undefined && token.counter !== null && (
             <div 
                 onMouseDown={(e) => e.stopPropagation()} 
@@ -135,7 +132,7 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
                 style={{
                     position: 'absolute', bottom: '-8px', left: '-8px',
                     background: '#111', border: '1px solid #666', borderRadius: '4px',
-                    display: 'flex', alignItems: 'center', justifyContent: 'center', // Centering for read-only
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', 
                     boxShadow: '0 2px 5px black',
                     overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none'
                 }}
@@ -194,10 +191,76 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
+// --- NEW COMPONENT: CARD SCANNER (OCR) ---
+const CardScanner = ({ videoRef, onScan, onClose }) => {
+    const [scanning, setScanning] = useState(false);
+
+    const performScan = async () => {
+        if (!videoRef.current) return;
+        setScanning(true);
+
+        const video = videoRef.current;
+        const canvas = document.createElement('canvas');
+        // Capture resolution
+        canvas.width = video.videoWidth;
+        canvas.height = video.videoHeight;
+        
+        const ctx = canvas.getContext('2d');
+        // We only want the center-ish area (The Sniper Scope)
+        // Let's assume the box is in the center, taking up 60% width and 20% height (for the name)
+        const scanX = video.videoWidth * 0.2;
+        const scanY = video.videoHeight * 0.3; // Aim for the top half where names usually are
+        const scanW = video.videoWidth * 0.6;
+        const scanH = video.videoHeight * 0.15; // Just the name bar
+
+        ctx.drawImage(video, scanX, scanY, scanW, scanH, 0, 0, scanW, scanH);
+        
+        // Convert to image
+        const dataUrl = canvas.toDataURL('image/png');
+
+        try {
+            // Run Tesseract
+            const { data: { text } } = await Tesseract.recognize(dataUrl, 'eng');
+            const cleanText = text.replace(/[^a-zA-Z\s]/g, '').trim(); // Remove noise
+            if(cleanText.length > 3) {
+                onScan(cleanText); // Pass the text back to App to search Scryfall
+            } else {
+                alert("Couldn't read text. Try aligning the name better.");
+            }
+        } catch (err) {
+            console.error(err);
+            alert("Scan failed.");
+        }
+        setScanning(false);
+    };
+
+    return (
+        <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 5000, pointerEvents: 'none' }}>
+            {/* The Scanner Box UI */}
+            <div style={{
+                position: 'absolute', top: '30%', left: '20%', width: '60%', height: '15%',
+                border: '3px solid #22c55e', borderRadius: '8px', boxShadow: '0 0 0 9999px rgba(0,0,0,0.7)',
+                display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'auto'
+            }}>
+                <div style={{color: '#22c55e', background:'rgba(0,0,0,0.8)', padding:'4px 8px', borderRadius:'4px', fontSize:'12px', position:'absolute', top:'-25px'}}>Align Card Name Here</div>
+            </div>
+
+            {/* Controls */}
+            <div style={{ position: 'absolute', bottom: '20px', left: '50%', transform: 'translateX(-50%)', display: 'flex', gap: '10px', pointerEvents: 'auto' }}>
+                <button onClick={performScan} disabled={scanning} style={{background: '#22c55e', border: 'none', color: 'black', padding: '10px 20px', borderRadius: '6px', fontWeight: 'bold', cursor: 'pointer'}}>
+                    {scanning ? 'Scanning...' : '📸 SCAN'}
+                </button>
+                <button onClick={onClose} style={{background: '#444', border: 'none', color: 'white', padding: '10px 20px', borderRadius: '6px', cursor: 'pointer'}}>Cancel</button>
+            </div>
+        </div>
+    );
+};
+
 const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
+  const [showHistory, setShowHistory] = useState(false);
   
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
@@ -313,6 +376,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const [tokenMenu, setTokenMenu] = useState(null); 
   const [rollCount, setRollCount] = useState(1);
   const [selectedDice, setSelectedDice] = useState('d20');
+  // --- SCANNER STATE ---
+  const [showScanner, setShowScanner] = useState(false);
 
   useEffect(() => { if (videoRef.current && stream) videoRef.current.srcObject = stream; }, [stream]);
 
@@ -330,6 +395,25 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
       updateGame(myId, { activeRoll: { type: selectedDice, results, id: Date.now() } });
       setShowSettings(false);
   };
+
+  // --- SCANNER HANDLER ---
+  const handleScanResult = async (scannedText) => {
+      // 1. First try autocomplete to get full name
+      const suggestions = await fetchAnyCardAutocomplete(scannedText);
+      let bestName = scannedText;
+      if (suggestions && suggestions.length > 0) {
+          bestName = suggestions[0];
+      }
+      
+      // 2. Fetch Card Image
+      const cardData = await fetchCardData(bestName);
+      if (cardData) {
+          onInspectToken(cardData); // Show popup
+      } else {
+          alert(`Found text: "${scannedText}", but couldn't find card.`);
+      }
+      setShowScanner(false);
+  };
   
   useEffect(() => {
     if (playerData?.activeRoll) {
@@ -340,15 +424,9 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
 
   const life = playerData?.life ?? 40;
   const isDead = life <= 0 || (playerData?.poison || 0) >= 10;
-
-  // --- CRITICAL FIX: EXACT ASPECT RATIO CALCULATION (THE STAGE) ---
-  const TARGET_RATIO = 1.777777778; // 16:9
-  
-  // Calculate max dimensions that fit inside the container
+  const TARGET_RATIO = 1.777777778; 
   let finalW = width;
   let finalH = width / TARGET_RATIO;
-
-  // If too tall, scale down based on height
   if (finalH > height) {
       finalH = height;
       finalW = height * TARGET_RATIO;
@@ -356,23 +434,13 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
 
   return (
     <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
-      
-      {/* OUTER WRAPPER: Centers the Stage */}
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
-        
-        {/* --- THE STAGE: EXACT DIMENSIONS --- */}
-        {/* Everything (video, tokens, overlay) lives inside this strictly sized box. */}
-        <div style={{ 
-            width: finalW, 
-            height: finalH, 
-            position: 'relative',
-            overflow: 'hidden'
-        }}>
-            
+        <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
-            
-            {/* VIDEO: FORCE FILL (No gaps allowed) */}
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
+            
+            {/* SCANNER OVERLAY */}
+            {isMyStream && showScanner && <CardScanner videoRef={videoRef} onScan={handleScanResult} onClose={() => setShowScanner(false)} />}
             
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
@@ -388,9 +456,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                {/* --- NEW ELIMINATE BUTTON --- */}
+                                <button onClick={() => { setShowScanner(true); setShowSettings(false); }} style={menuBtnStyle}>📸 Card Scanner</button>
                                 <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
-
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
                                     <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
@@ -407,7 +474,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                     </div>
                                     <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
                                 </div>
-
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
                                     <TokenSearchBar onSelect={handleAddToken} />
