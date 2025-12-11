@@ -7,6 +7,7 @@ const socket = io('https://battlemat.onrender.com');
 
 // --- ASSETS ---
 const MONARCH_CARD_IMG = "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg";
+// Updated Initiative Link to ensure it loads
 const INITIATIVE_CARD_IMG = "https://cards.scryfall.io/large/front/5/7/57a445d0-44f1-4966-924d-9d261e1b82eb.jpg";
 
 const getRoomId = () => {
@@ -373,8 +374,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
-            {/* --- NEW: STATUS ICONS (Monarch/Initiative) --- */}
-            <div style={{position: 'absolute', top: '5px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
+            {/* --- UPDATED: STATUS ICONS MOVED DOWN --- */}
+            <div style={{position: 'absolute', top: '80px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
                         onMouseEnter={() => setHoveredCardImage(MONARCH_CARD_IMG)} 
@@ -399,7 +400,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                {/* --- NEW: CLAIM STATUS BUTTONS --- */}
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                                 
@@ -521,7 +521,6 @@ function App() {
       handleUpdateGame(myId, { life: currentLife + amount });
   };
   
-  // --- NEW: CLAIM STATUS LOGIC (Sends event to server) ---
   const handleClaimStatus = (type) => {
       socket.emit('claim-status', { type, userId: myId });
   };
@@ -780,16 +779,13 @@ function App() {
         }); 
     });
 
-    // --- NEW: LISTEN FOR STATUS CHANGES ---
     socket.on('status-claimed', ({ type, userId: newOwnerId }) => {
         setGameState(prev => {
             const newState = { ...prev };
-            // 1. Clear status from everyone
             Object.keys(newState).forEach(pid => {
                 if (type === 'monarch') newState[pid] = { ...newState[pid], isMonarch: false };
                 if (type === 'initiative') newState[pid] = { ...newState[pid], isInitiative: false };
             });
-            // 2. Set status for new owner
             if (newState[newOwnerId]) {
                 if (type === 'monarch') newState[newOwnerId] = { ...newState[newOwnerId], isMonarch: true };
                 if (type === 'initiative') newState[newOwnerId] = { ...newState[newOwnerId], isInitiative: true };
