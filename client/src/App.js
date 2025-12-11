@@ -299,7 +299,7 @@ function App() {
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
   const turnStateRef = useRef({ activeId: null, count: 1 });
-  const myIdRef = useRef(null); // CRITICAL FIX: TRACK ID WITHOUT RE-RENDERS
+  const myIdRef = useRef(null); 
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
   useEffect(() => { seatOrderRef.current = seatOrder; }, [seatOrder]);
@@ -527,12 +527,17 @@ function App() {
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s, call)); 
         
-        // SYNC STATE using REFS to avoid re-renders
+        // --- SYNC LOGIC ---
         if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
             socket.emit('update-game-state', { userId: myIdRef.current, data: gameStateRef.current[myIdRef.current] });
         }
         socket.emit('update-turn-state', turnStateRef.current);
-        socket.emit('update-seat-order', seatOrderRef.current);
+        
+        // --- CRITICAL FIX 1: CALCULATE NEW ORDER BEFORE SENDING ---
+        const currentOrder = seatOrderRef.current;
+        const newOrder = currentOrder.includes(userId) ? currentOrder : [...currentOrder, userId];
+        socket.emit('update-seat-order', newOrder);
+        setSeatOrder(newOrder); // Update myself locally too
     });
 
     socket.on('user-disconnected', disconnectedId => {
@@ -548,7 +553,17 @@ function App() {
     socket.on('game-state-updated', ({ userId, data }) => { setGameState(prev => ({ ...prev, [userId]: data })); });
     socket.on('turn-state-updated', (newState) => { setTurnState(newState); });
     socket.on('game-reset', ({ gameState: newGS, turnState: newTS }) => { setGameState(newGS); setTurnState(newTS); });
-    socket.on('seat-order-updated', (newOrder) => { setSeatOrder(newOrder); });
+    
+    // --- CRITICAL FIX 2: NEVER DELETE MYSELF ON SYNC ---
+    socket.on('seat-order-updated', (newOrder) => { 
+        setSeatOrder(prev => {
+            // If the incoming list is missing ME, add ME back in.
+            if(myIdRef.current && !newOrder.includes(myIdRef.current)){
+                return [...newOrder, myIdRef.current];
+            }
+            return newOrder;
+        }); 
+    });
 
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
