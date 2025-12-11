@@ -108,8 +108,7 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        // 12% WIDTH (Matches card size better)
-        width: '12%', minWidth: '50px', 
+        width: '10%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -474,6 +473,7 @@ function App() {
 
   const handleGlobalCardFound = (cardData) => {
     setViewCard(cardData);
+    // --- UPDATED: KEEP 12 CARDS FOR THE 2x6 GRID ---
     setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 12));
   };
 
@@ -636,6 +636,9 @@ function App() {
       if (document.activeElement.tagName === 'INPUT') return;
       if (e.key === 'ArrowUp') { e.preventDefault(); safeLifeChange(1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); safeLifeChange(-1); }
+      // --- NEW: ARROW LEFT/RIGHT SHORTCUTS ---
+      if (e.key === 'ArrowLeft') { e.preventDefault(); safeLifeChange(-5); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); safeLifeChange(5); }
       if (e.code === 'Space') { e.preventDefault(); passTurn(); }
     };
     window.addEventListener('keydown', handleKeyDown);
