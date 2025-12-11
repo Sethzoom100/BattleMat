@@ -44,8 +44,6 @@ const fetchCommanderAutocomplete = async (text) => {
 };
 
 // --- COMPONENTS ---
-
-// 1. DICE OVERLAY
 const DiceOverlay = ({ activeRoll }) => {
   if (!activeRoll) return null;
   return (
@@ -59,7 +57,6 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
-// 2. DRAGGABLE TOKEN
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -111,8 +108,8 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        // 10% WIDTH (Approx 85px)
-        width: '10%', minWidth: '45px', 
+        // 12% WIDTH (Matches card size better)
+        width: '12%', minWidth: '50px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -123,7 +120,6 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
   );
 };
 
-// 3. TOKEN CONTEXT MENU
 const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
     <>
         <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
@@ -134,7 +130,6 @@ const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
     </>
 );
 
-// 4. TOKEN SEARCH BAR
 const TokenSearchBar = ({ onSelect }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -153,7 +148,6 @@ const TokenSearchBar = ({ onSelect }) => {
   );
 };
 
-// 5. BIG LIFE COUNTER
 const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(life);
@@ -169,7 +163,7 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
-// 6. HEADER SEARCH BAR
+// --- HEADER & HISTORY ---
 const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -189,7 +183,6 @@ const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   );
 };
 
-// 7. NEW: FULL SCREEN HISTORY MODAL
 const HistoryModal = ({ history, onSelect, onClose }) => {
     return (
         <div 
@@ -226,7 +219,6 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-// 8. CARD MODAL
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
@@ -239,7 +231,6 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
-// 9. COMMANDER LABEL
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -257,7 +248,6 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
-// 10. DAMAGE PANEL
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
   const poison = targetPlayerData?.poison || 0;
   const cmdDamageTaken = targetPlayerData?.cmdDamageTaken || {};
@@ -284,7 +274,6 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// 11. VIDEO CONTAINER
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -322,10 +311,14 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const life = playerData?.life ?? 40;
   const isDead = life <= 0 || (playerData?.poison || 0) >= 10;
 
-  // STRICT STAGE ASPECT RATIO
+  // --- CRITICAL FIX: EXACT ASPECT RATIO CALCULATION (THE STAGE) ---
   const TARGET_RATIO = 1.777777778; // 16:9
+  
+  // Calculate max dimensions that fit inside the container
   let finalW = width;
   let finalH = width / TARGET_RATIO;
+
+  // If too tall, scale down based on height
   if (finalH > height) {
       finalH = height;
       finalW = height * TARGET_RATIO;
@@ -333,10 +326,24 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
 
   return (
     <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
+      
+      {/* OUTER WRAPPER: Centers the Stage */}
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
-        <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
+        
+        {/* --- THE STAGE: EXACT DIMENSIONS --- */}
+        {/* Everything (video, tokens, overlay) lives inside this strictly sized box. */}
+        <div style={{ 
+            width: finalW, 
+            height: finalH, 
+            position: 'relative',
+            overflow: 'hidden'
+        }}>
+            
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
+            
+            {/* VIDEO: FORCE FILL (No gaps allowed) */}
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
+            
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
             <DiceOverlay activeRoll={playerData?.activeRoll} />
@@ -351,6 +358,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
+                                
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
                                     <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
@@ -367,6 +375,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                     </div>
                                     <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
                                 </div>
+
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
                                     <TokenSearchBar onSelect={handleAddToken} />
@@ -417,11 +426,13 @@ function App() {
   const seatOrderRef = useRef([]);
   const turnStateRef = useRef({ activeId: null, count: 1 });
   const myIdRef = useRef(null); 
+  const cameraRatioRef = useRef('16:9');
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
   useEffect(() => { seatOrderRef.current = seatOrder; }, [seatOrder]);
   useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
+  useEffect(() => { cameraRatioRef.current = cameraRatio; }, [cameraRatio]);
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
@@ -437,10 +448,24 @@ function App() {
         const myData = prev[myId] || {};
         const allCmdDmg = myData.cmdDamageTaken || {};
         const specificOppDmg = allCmdDmg[opponentId] || { primary: 0, partner: 0 };
-        const newVal = Math.max(0, (specificOppDmg[type] || 0) + amount);
-        const newOppDmg = { ...specificOppDmg, [type]: newVal };
+        
+        // --- AUTO-LIFE UPDATE ---
+        const currentCmdDmg = specificOppDmg[type] || 0;
+        const newCmdDmg = Math.max(0, currentCmdDmg + amount);
+        
+        let newLife = myData.life ?? 40;
+        if (newCmdDmg !== currentCmdDmg) {
+            newLife -= (newCmdDmg - currentCmdDmg);
+        }
+
+        const newOppDmg = { ...specificOppDmg, [type]: newCmdDmg };
         const newAllCmdDmg = { ...allCmdDmg, [opponentId]: newOppDmg };
-        const newMyData = { ...myData, cmdDamageTaken: newAllCmdDmg };
+        
+        const newMyData = { 
+            ...myData, 
+            cmdDamageTaken: newAllCmdDmg,
+            life: newLife
+        };
         socket.emit('update-game-state', { userId: myId, data: newMyData });
         return { ...prev, [myId]: newMyData };
       });
@@ -568,6 +593,11 @@ function App() {
   const switchCameraStream = () => {
     if (!myStream) return;
     const targetLabel = cameraRatio === '16:9' ? '4:3' : '16:9';
+    setCameraRatio(targetLabel); // Update local state
+    
+    // --- SYNC RATIO TO SERVER IMMEDIATELY ---
+    handleUpdateGame(myId, { cameraRatio: targetLabel });
+
     const constraints = targetLabel === '16:9' 
         ? { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 }
         : { width: { ideal: 640 }, height: { ideal: 480 }, aspectRatio: 1.333333333 };
@@ -575,7 +605,6 @@ function App() {
     navigator.mediaDevices.getUserMedia({ video: constraints, audio: true }).then(newStream => {
         setMyStream(newStream);
         streamRef.current = newStream;
-        setCameraRatio(targetLabel);
         if (peerRef.current) {
             Object.values(peerRef.current.connections).forEach(conns => {
                 conns.forEach(conn => {
