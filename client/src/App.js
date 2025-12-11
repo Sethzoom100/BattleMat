@@ -844,6 +844,103 @@ function App() {
       socket.emit('claim-status', { type, userId: myId });
   };
 
+  // --- RECORD STATS (WITH DECK) ---
+  const handleRecordStat = async (isWin) => {
+      if (!user || !token) {
+          alert("Please login to record stats!");
+          return;
+      }
+      try {
+          const res = await fetch(`${API_URL}/update-stats`, {
+              method: 'POST',
+              headers: { 
+                  'Content-Type': 'application/json',
+                  'Authorization': `Bearer ${token}` 
+              },
+              body: JSON.stringify({ userId: user.id, win: isWin, loss: !isWin, deckId: selectedDeckId })
+          });
+          const data = await res.json();
+          setUser(prev => ({ ...prev, stats: data.stats, decks: data.decks }));
+          alert(`Stat Recorded! Total Wins: ${data.stats.wins}`);
+      } catch (err) {
+          console.error(err);
+      }
+  };
+
+  const handleInvite = () => {
+    navigator.clipboard.writeText(window.location.href);
+    setInviteText("Copied!");
+    setTimeout(() => setInviteText("Invite"), 2000);
+  };
+
+  const calculateLayout = useCallback(() => {
+    if (!containerRef.current) return;
+    const count = seatOrder.length || 1;
+    const containerW = containerRef.current.clientWidth;
+    const containerH = containerRef.current.clientHeight;
+    let bestArea = 0;
+    let bestConfig = { width: 0, height: 0 };
+    for (let cols = 1; cols <= count; cols++) {
+      const rows = Math.ceil(count / cols);
+      const maxW = containerW / cols;
+      const maxH = containerH / rows;
+      let w = maxW;
+      let h = w / (16/9);
+      if (h > maxH) { h = maxH; w = h * (16/9); }
+      if ((w * h) > bestArea) { bestArea = w * h; bestConfig = { width: w, height: h }; }
+    }
+    setLayout(bestConfig);
+  }, [seatOrder.length]);
+
+  useLayoutEffect(() => {
+    calculateLayout();
+    window.addEventListener('resize', calculateLayout);
+    return () => window.removeEventListener('resize', calculateLayout);
+  }, [calculateLayout]);
+
+  const isPlayerEliminated = (data) => {
+    if (!data) return false;
+    const life = data.life ?? 40;
+    if (life <= 0) return true;
+    if ((data.poison || 0) >= 10) return true;
+    return false;
+  };
+
+  const passTurn = useCallback(() => {
+    if (seatOrder.length === 0) return;
+    if (turnState.activeId === null) {
+        const newState = { activeId: seatOrder[0], count: 1 };
+        setTurnState(newState);
+        socket.emit('update-turn-state', newState);
+        return; 
+    }
+    const currentIndex = seatOrder.indexOf(turnState.activeId);
+    if (currentIndex === -1) return; 
+
+    let flowOrder = [];
+    if (seatOrder.length === 4) {
+        flowOrder = [0, 1, 3, 2];
+    } else {
+        flowOrder = seatOrder.map((_, i) => i);
+    }
+    let flowIndex = flowOrder.indexOf(currentIndex);
+    if (flowIndex === -1) flowIndex = 0;
+    let attempts = 0;
+    let nextSeatId = null;
+    let nextTurnCount = turnState.count;
+    do {
+        flowIndex = (flowIndex + 1) % flowOrder.length;
+        if (flowIndex === 0) nextTurnCount++;
+        const seatIdx = flowOrder[flowIndex];
+        nextSeatId = seatOrder[seatIdx];
+        attempts++;
+        if (attempts > seatOrder.length) break; 
+    } while (isPlayerEliminated(gameState[nextSeatId]));
+    const newState = { activeId: nextSeatId, count: nextTurnCount };
+    setTurnState(newState);
+    socket.emit('update-turn-state', newState);
+  }, [seatOrder, turnState, gameState]);
+
   // --- NEW: FINISH GAME LOGIC ---
   const handleFinishGame = async (winnerId) => {
       const results = seatOrder.map(pid => {
