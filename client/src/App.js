@@ -57,6 +57,7 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
+// --- DRAGGABLE TOKEN (PERCENTAGE WIDTH + COUNTER) ---
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -104,27 +105,55 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Handle Counter Clicks (Stop propagation so we don't drag the token)
+  const handleCounterChange = (e, amount) => {
+      e.stopPropagation(); 
+      e.preventDefault();
+      onUpdate({ ...token, counter: (token.counter || 0) + amount });
+  };
+
   return (
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        // 10% WIDTH (Approx 85px)
-        width: '10%', minWidth: '45px', 
+        width: '12%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
       }}
     >
-      <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
+      <div style={{position: 'relative', width: '100%'}}>
+        <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
+        
+        {/* --- GENERIC COUNTER (BOTTOM LEFT) --- */}
+        {token.counter !== undefined && token.counter !== null && (
+            <div 
+                onMouseDown={(e) => e.stopPropagation()} // Prevent dragging when clicking counter
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    position: 'absolute', bottom: '-8px', left: '-8px',
+                    background: '#111', border: '1px solid #666', borderRadius: '4px',
+                    display: 'flex', alignItems: 'center', boxShadow: '0 2px 5px black',
+                    overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none' // Counter stays upright if possible, or rotates with it. keeping simple for now.
+                }}
+            >
+                <button onClick={(e) => handleCounterChange(e, -1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>-</button>
+                <span style={{fontSize: '11px', fontWeight: 'bold', color: '#fff', padding: '0 4px', minWidth: '14px', textAlign: 'center'}}>{token.counter}</span>
+                <button onClick={(e) => handleCounterChange(e, 1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>+</button>
+            </div>
+        )}
+      </div>
     </div>
   );
 };
 
-const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
+// --- UPDATED CONTEXT MENU ---
+const TokenContextMenu = ({ x, y, onDelete, onInspect, onToggleCounter, onClose }) => (
     <>
         <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
-        <div style={{ position: 'absolute', top: y, left: x, background: '#222', border: '1px solid #555', borderRadius: '4px', zIndex: 2000, minWidth: '100px', boxShadow: '0 4px 15px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: y, left: x, background: '#222', border: '1px solid #555', borderRadius: '4px', zIndex: 2000, minWidth: '120px', boxShadow: '0 4px 15px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
             <div onClick={(e) => { e.stopPropagation(); onInspect(); onClose(); }} style={menuItemStyle}>🔍 Inspect</div>
+            <div onClick={(e) => { e.stopPropagation(); onToggleCounter(); onClose(); }} style={menuItemStyle}>🔢 Counter</div>
             <div onClick={(e) => { e.stopPropagation(); onDelete(); onClose(); }} style={{...menuItemStyle, color: '#ef4444', borderTop: '1px solid #333'}}>🗑️ Delete</div>
         </div>
     </>
@@ -163,7 +192,6 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
-// --- HEADER & HISTORY ---
 const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -348,7 +376,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
             <DiceOverlay activeRoll={playerData?.activeRoll} />
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
-            {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onClose={() => setTokenMenu(null)} />}
+            {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
             <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
                 <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
