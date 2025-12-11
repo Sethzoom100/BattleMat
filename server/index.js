@@ -21,20 +21,27 @@ const io = new Server(server, { cors: corsOptions });
 const socketToRoom = {};
 const socketToUser = {}; 
 
-app.get('/', (req, res) => { res.send('BattleMat Server Running (Spectator Update)'); });
+app.get('/', (req, res) => { res.send('BattleMat Server Running (Monarch/Init Update)'); });
 
 io.on('connection', (socket) => {
     
-    // UPDATED: Accept isSpectator flag
     socket.on('join-room', (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
         
         console.log(`User ${userId} joined room ${roomId} (Spectator: ${isSpectator})`);
-        
-        // Pass the isSpectator flag to everyone else so they know how to handle this user
         socket.to(roomId).emit('user-connected', userId, isSpectator);
+    });
+
+    // --- NEW: STATUS HANDLER (Monarch/Initiative) ---
+    // When a user claims a unique status, tell everyone who claimed it.
+    socket.on('claim-status', ({ type, userId }) => {
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            // Broadcast to everyone (including sender) so clients can clear old owners
+            io.to(roomId).emit('status-claimed', { type, userId });
+        }
     });
 
     socket.on('sync-request', () => {
