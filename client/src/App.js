@@ -108,6 +108,7 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
+        // 10% WIDTH (Approx 85px)
         width: '10%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
@@ -357,7 +358,9 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                
+                                {/* --- NEW ELIMINATE BUTTON --- */}
+                                <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
+
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
                                     <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
