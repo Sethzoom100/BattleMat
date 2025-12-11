@@ -108,21 +108,42 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- PROFILE SCREEN (UPDATED ZOOM) ---
+// --- PROFILE SCREEN (UPDATED: COMMANDER + PARTNER FIELDS) ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
-    const [deckName, setDeckName] = useState("");
+    // No more deckName state
     const [cmdrName, setCmdrName] = useState("");
+    const [partnerName, setPartnerName] = useState("");
+    
+    // Autocomplete Logic
     const [suggestions, setSuggestions] = useState([]);
+    const [activeInput, setActiveInput] = useState(null); // 'commander' or 'partner'
 
-    const handleSearchCmdr = async (val) => {
-        setCmdrName(val);
+    const handleSearch = async (val, field) => {
+        if (field === 'commander') setCmdrName(val);
+        else setPartnerName(val);
+        
+        setActiveInput(field);
         if (val.length > 2) setSuggestions(await fetchCommanderAutocomplete(val));
+        else setSuggestions([]);
+    };
+
+    const handleSelectSuggestion = (name) => {
+        if (activeInput === 'commander') setCmdrName(name);
+        else setPartnerName(name);
+        setSuggestions([]);
+        setActiveInput(null);
     };
 
     const handleAddDeck = async () => {
-        if (!deckName || !cmdrName) return;
+        if (!cmdrName) return; // Only Commander is mandatory
+        
+        // 1. Fetch Art (Use Commander's art)
         const cardData = await fetchCardData(cmdrName);
         const image = cardData ? (cardData.artCrop || cardData.image) : "";
+        
+        // 2. Auto-generate Name: "Commander" OR "Commander + Partner"
+        const deckName = partnerName ? `${cmdrName} + ${partnerName}` : cmdrName;
+
         try {
             const res = await fetch(`${API_URL}/add-deck`, {
                 method: 'POST',
@@ -131,7 +152,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             });
             const updatedDecks = await res.json();
             onUpdateUser({ ...user, decks: updatedDecks });
-            setDeckName(""); setCmdrName(""); setSuggestions([]);
+            setCmdrName(""); setPartnerName(""); setSuggestions([]);
         } catch (err) { console.error(err); }
     };
 
@@ -180,28 +201,43 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
 
             <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
             
-            <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444'}}>
-                <input type="text" placeholder="Deck Name" value={deckName} onChange={e => setDeckName(e.target.value)} style={inputStyle} />
-                <div style={{position: 'relative'}}>
-                    <input type="text" placeholder="Commander" value={cmdrName} onChange={e => handleSearchCmdr(e.target.value)} style={inputStyle} />
-                    {suggestions.length > 0 && <div style={{position: 'absolute', top: '100%', left: 0, width: '100%', background: '#333', border: '1px solid #555', zIndex: 10}}>{suggestions.map((s,i) => <div key={i} onClick={() => { setCmdrName(s); setSuggestions([]); }} style={{padding: '5px', cursor: 'pointer'}}>{s}</div>)}</div>}
+            {/* UPDATED: Add Deck Form */}
+            <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444', flexWrap: 'wrap'}}>
+                
+                {/* Commander Input */}
+                <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
+                    <input type="text" placeholder="Commander (Required)" value={cmdrName} onChange={e => handleSearch(e.target.value, 'commander')} style={{...inputStyle, width: '100%'}} />
+                    {suggestions.length > 0 && activeInput === 'commander' && (
+                        <div style={{position: 'absolute', top: '100%', left: 0, width: '100%', background: '#333', border: '1px solid #555', zIndex: 10}}>
+                            {suggestions.map((s,i) => <div key={i} onClick={() => handleSelectSuggestion(s)} style={{padding: '5px', cursor: 'pointer'}}>{s}</div>)}
+                        </div>
+                    )}
                 </div>
-                <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>+ Add Deck</button>
+
+                {/* Partner Input */}
+                <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
+                    <input type="text" placeholder="Partner (Optional)" value={partnerName} onChange={e => handleSearch(e.target.value, 'partner')} style={{...inputStyle, width: '100%'}} />
+                    {suggestions.length > 0 && activeInput === 'partner' && (
+                        <div style={{position: 'absolute', top: '100%', left: 0, width: '100%', background: '#333', border: '1px solid #555', zIndex: 10}}>
+                            {suggestions.map((s,i) => <div key={i} onClick={() => handleSelectSuggestion(s)} style={{padding: '5px', cursor: 'pointer'}}>{s}</div>)}
+                        </div>
+                    )}
+                </div>
+
+                <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>+ Create Deck</button>
             </div>
 
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {user.decks && user.decks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        {/* --- UPDATED: Zoom 120%, Offset Top 20% --- */}
                         <div style={{
                             height: '180px', 
                             background: `url(${deck.image}) center 20% / 120% no-repeat`,
                             borderBottom: '1px solid #333'
                         }}></div>
                         <div style={{padding: '15px'}}>
-                            <div style={{fontWeight: 'bold', fontSize: '16px'}}>{deck.name}</div>
-                            <div style={{fontSize: '12px', color: '#888', marginBottom: '10px'}}>{deck.commander}</div>
-                            <div style={{fontSize: '13px'}}>Win Rate: {deck.wins + deck.losses > 0 ? Math.round((deck.wins / (deck.wins+deck.losses))*100) : 0}%</div>
+                            <div style={{fontWeight: 'bold', fontSize: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}} title={deck.name}>{deck.name}</div>
+                            <div style={{fontSize: '13px', marginTop: '5px'}}>Win Rate: {deck.wins + deck.losses > 0 ? Math.round((deck.wins / (deck.wins+deck.losses))*100) : 0}%</div>
                             <div style={{fontSize: '12px', color: '#666'}}>{deck.wins}W - {deck.losses}L</div>
                             <button onClick={() => handleDeleteDeck(deck._id)} style={{marginTop: '10px', width: '100%', padding: '5px', background: '#7f1d1d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px'}}>Delete Deck</button>
                         </div>
@@ -281,7 +317,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                 <select value={selectedDeckId} onChange={e => onSelectDeck(e.target.value)} style={{width: '100%', padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none', marginTop: '5px'}}>
                     <option value="">-- No Deck (Stats to Global only) --</option>
-                    {user.decks.map(d => <option key={d._id} value={d._id}>{d.name} ({d.commander})</option>)}
+                    {user.decks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                 </select>
             </div>
         )}
