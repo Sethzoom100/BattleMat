@@ -2,7 +2,6 @@ import React, { useEffect, useState, useRef, useCallback, useLayoutEffect } from
 import io from 'socket.io-client';
 import Peer from 'peerjs';
 
-// --- CONNECTION SETUP ---
 const socket = io('https://battlemat.onrender.com');
 
 const getRoomId = () => {
@@ -296,15 +295,16 @@ function App() {
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
 
-  // --- REFS FOR SYNCING ---
+  // REFS FOR SYNC AND STATE TRACKING
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
   const turnStateRef = useRef({ activeId: null, count: 1 });
+  const myIdRef = useRef(null); // CRITICAL FIX: TRACK ID WITHOUT RE-RENDERS
 
-  // Update Refs whenever state changes
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
   useEffect(() => { seatOrderRef.current = seatOrder; }, [seatOrder]);
   useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
+  useEffect(() => { myIdRef.current = myId; }, [myId]);
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
@@ -496,7 +496,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  // --- REORDERED INITIALIZATION LOGIC ---
+  // --- REORDERED INITIALIZATION LOGIC (NO DEPS) ---
   useEffect(() => {
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
 
@@ -522,21 +522,16 @@ function App() {
       })
       .catch(() => console.error("Camera Error"));
 
-    // --- SYNC LOGIC (The Magic) ---
     socket.on('user-connected', userId => { 
         if (!peerRef.current || !streamRef.current) return;
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s, call)); 
         
-        // 1. Send MY current state to the new user
-        if (myId && gameStateRef.current[myId]) {
-            socket.emit('update-game-state', { userId: myId, data: gameStateRef.current[myId] });
+        // SYNC STATE using REFS to avoid re-renders
+        if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
+            socket.emit('update-game-state', { userId: myIdRef.current, data: gameStateRef.current[myIdRef.current] });
         }
-        
-        // 2. Broadcast the current Turn info (anyone can do this, redundancy is fine)
         socket.emit('update-turn-state', turnStateRef.current);
-
-        // 3. Broadcast Seat Order so they see everyone in the right spot
         socket.emit('update-seat-order', seatOrderRef.current);
     });
 
@@ -561,7 +556,7 @@ function App() {
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [myId]); // Added myId to dep array to ensure sync uses correct ID
+  }, []);
 
   function addPeer(id, stream, call) {
     if (call) peersRef.current[id] = call;
