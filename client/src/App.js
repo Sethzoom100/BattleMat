@@ -108,6 +108,42 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
+// --- FINISH GAME MODAL (NEW) ---
+const FinishGameModal = ({ players, onFinish, onClose }) => {
+    const [winnerId, setWinnerId] = useState(null);
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.9)', zIndex: 200000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '350px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <h2 style={{margin: 0, textAlign: 'center', color: '#facc15'}}>Finish Game</h2>
+                <p style={{fontSize: '13px', color: '#aaa', textAlign: 'center'}}>Select the winner. This will record stats for everyone and reset the game.</p>
+                
+                <div style={{maxHeight: '200px', overflowY: 'auto', border: '1px solid #333', borderRadius: '5px'}}>
+                    {players.map(p => (
+                        <div 
+                            key={p.id} 
+                            onClick={() => setWinnerId(p.id)}
+                            style={{
+                                padding: '10px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px',
+                                background: winnerId === p.id ? 'rgba(34, 197, 94, 0.2)' : 'transparent',
+                                borderBottom: '1px solid #333'
+                            }}
+                        >
+                            <div style={{width: '20px', height: '20px', borderRadius: '50%', border: '2px solid #555', background: winnerId === p.id ? '#22c55e' : 'transparent', display: 'flex', alignItems: 'center', justifyContent: 'center'}}>
+                                {winnerId === p.id && <div style={{width: '10px', height: '10px', borderRadius: '50%', background: '#fff'}} />}
+                            </div>
+                            <span style={{fontWeight: 'bold'}}>{p.username || `Player ${p.id.substr(0,4)}`}</span>
+                        </div>
+                    ))}
+                </div>
+
+                <button onClick={() => onFinish(winnerId)} disabled={!winnerId} style={{padding: '12px', background: winnerId ? '#2563eb' : '#444', color: 'white', border: 'none', borderRadius: '5px', cursor: winnerId ? 'pointer' : 'not-allowed', fontWeight: 'bold', fontSize: '16px'}}>🏆 Confirm Winner & Reset</button>
+                <button onClick={onClose} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px'}}>Cancel</button>
+            </div>
+        </div>
+    );
+};
+
 // --- PROFILE SCREEN ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [cmdrName, setCmdrName] = useState("");
@@ -230,13 +266,13 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED WITH SECRET COMMANDER) ---
+// --- LOBBY ---
 const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [previewStream, setPreviewStream] = useState(null);
-  const [hideCommander, setHideCommander] = useState(false); // NEW STATE
+  const [hideCommander, setHideCommander] = useState(false); 
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -261,9 +297,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, selectedDeviceId]);
 
-  // Pass hideCommander status to onJoin
   const handleEnterGame = async () => { 
-      // Fetch deck data if deck selected
       let deckData = null;
       if (user && user.decks && selectedDeckId) {
           const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -309,8 +343,6 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        
-        {/* --- DECK SELECTOR + HIDE TOGGLE --- */}
         {user && user.decks && user.decks.length > 0 && (
             <div>
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
@@ -614,6 +646,13 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             
+            {/* --- NAME BAR OVERLAY --- */}
+            {playerData?.username && (
+                <div style={{ position: 'absolute', bottom: '0', left: '0', width: '100%', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', color: 'white', fontSize: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', zIndex: 45 }}>
+                    {playerData.username}
+                </div>
+            )}
+
             {hoveredCard && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)', display: 'flex', gap: '5px' }}>
                     <img src={hoveredCard.image} alt="Card" style={{width: '240px', borderRadius: '10px'}} />
@@ -655,11 +694,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                                 
-                                <div style={{padding: '8px', borderTop: '1px solid #444', display: 'flex', gap: '5px'}}>
-                                    <button onClick={() => onRecordStat(true)} style={{flex: 1, background: '#166534', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🏆 WIN</button>
-                                    <button onClick={() => onRecordStat(false)} style={{flex: 1, background: '#991b1b', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>❌ LOSS</button>
-                                </div>
-
                                 <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
@@ -691,7 +725,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
                 <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} secretData={playerData?.secretCommanders?.primary} onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })} />
-                {/* Partner Logic Updated for Secret Mode */}
                 {(isMyStream || playerData?.commanders?.partner || playerData?.secretCommanders?.partner) && (
                     <>
                         <span style={{color: '#666'}}>|</span>
@@ -745,6 +778,7 @@ function App() {
   const [showAuthModal, setShowAuthModal] = useState(false);
   const [showProfile, setShowProfile] = useState(false);
   const [selectedDeckId, setSelectedDeckId] = useState("");
+  const [showFinishModal, setShowFinishModal] = useState(false); // NEW MODAL STATE
 
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
@@ -802,29 +836,6 @@ function App() {
   
   const handleClaimStatus = (type) => {
       socket.emit('claim-status', { type, userId: myId });
-  };
-
-  // --- RECORD STATS (WITH DECK) ---
-  const handleRecordStat = async (isWin) => {
-      if (!user || !token) {
-          alert("Please login to record stats!");
-          return;
-      }
-      try {
-          const res = await fetch(`${API_URL}/update-stats`, {
-              method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}` 
-              },
-              body: JSON.stringify({ userId: user.id, win: isWin, loss: !isWin, deckId: selectedDeckId })
-          });
-          const data = await res.json();
-          setUser(prev => ({ ...prev, stats: data.stats, decks: data.decks }));
-          alert(`Stat Recorded! Total Wins: ${data.stats.wins}`);
-      } catch (err) {
-          console.error(err);
-      }
   };
 
   const handleInvite = () => {
@@ -901,25 +912,41 @@ function App() {
     socket.emit('update-turn-state', newState);
   }, [seatOrder, turnState, gameState]);
 
-  const resetGame = () => {
-    if(!window.confirm("Are you sure you want to reset the game?")) return;
-    const newGameState = {};
-    const allIds = [myId, ...peers.map(p => p.id)];
-    allIds.forEach(pid => {
-        newGameState[pid] = {
-            life: 40,
-            poison: 0,
-            commanders: { primary: null, partner: null },
-            cmdDamageTaken: {},
-            tokens: [],
-            isMonarch: false,
-            isInitiative: false
-        };
-    });
-    const newTurnState = { activeId: null, count: 1 };
-    setGameState(newGameState);
-    setTurnState(newTurnState);
-    socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
+  // --- NEW: FINISH GAME LOGIC ---
+  const handleFinishGame = async (winnerId) => {
+      const results = seatOrder.map(pid => {
+          const pData = gameState[pid];
+          return {
+              userId: pData?.dbId, // Assuming dbId is stored in gameState (see joinGame)
+              result: pid === winnerId ? 'win' : 'loss',
+              deckId: pData?.deckId
+          };
+      });
+
+      try {
+          // Send stats to backend
+          await fetch(`${API_URL}/finish-game`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ results })
+          });
+          
+          // Reset Game Board
+          const newGameState = {};
+          seatOrder.forEach(pid => {
+              newGameState[pid] = {
+                  life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], isMonarch: false, isInitiative: false,
+                  // Preserve user info for next game
+                  username: gameState[pid]?.username,
+                  dbId: gameState[pid]?.dbId,
+                  deckId: gameState[pid]?.deckId 
+              };
+          });
+          const newTurnState = { activeId: null, count: 1 };
+          socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
+          
+          setShowFinishModal(false);
+      } catch (err) { console.error(err); }
   };
 
   const randomizeSeats = () => {
@@ -995,7 +1022,7 @@ function App() {
     return () => clearInterval(interval);
   }, [isSpectator]);
 
-  // --- JOIN GAME: HANDLES DECK FETCH & SECRET COMMANDER ---
+  // --- JOIN GAME: HANDLES DECK FETCH, SECRET COMMANDER & USERNAME ---
   const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
     setIsSpectator(spectatorMode);
@@ -1011,15 +1038,18 @@ function App() {
           const initialData = { 
               life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9',
               commanders: {}, 
-              secretCommanders: null 
+              secretCommanders: null,
+              // Store user info in gameState for namebars and stats
+              username: user ? user.username : `Guest ${id.substr(0,4)}`,
+              dbId: user ? user.id : null,
+              deckId: selectedDeckId || null
           };
 
-          // IF DECK SELECTED:
           if (deckData) {
               if (isSecret) {
-                  initialData.secretCommanders = deckData; // Save secretly
+                  initialData.secretCommanders = deckData; 
               } else {
-                  initialData.commanders = deckData; // Show publicly
+                  initialData.commanders = deckData; 
               }
           }
 
@@ -1130,6 +1160,9 @@ function App() {
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
 
+  // --- DERIVE PLAYERS FOR FINISH MODAL ---
+  const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
+
   return (
     <>
       <style>{`
@@ -1142,6 +1175,7 @@ function App() {
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
+      {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
 
       {!hasJoined && (
         <Lobby 
@@ -1170,7 +1204,7 @@ function App() {
                 <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
                 {!isSpectator && (
                     <>
-                    <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
+                    <button onClick={() => setShowFinishModal(true)} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🏆 FINISH GAME</button>
                     <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
                     </>
                 )}
