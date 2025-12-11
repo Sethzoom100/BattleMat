@@ -19,32 +19,29 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS (Updated to fetch Art Crop) ---
+// --- API HELPERS ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
     const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cardName)}`);
     const data = await res.json();
     
-    // Helper to grab specific image types safely
     const getImages = (face) => ({
         normal: face.image_uris?.normal,
-        artCrop: face.image_uris?.art_crop // Grabbing the art crop specifically
+        artCrop: face.image_uris?.art_crop
     });
 
     if (data.card_faces && data.card_faces.length > 1 && data.card_faces[0].image_uris) {
-        // Double faced
         const front = getImages(data.card_faces[0]);
         const back = getImages(data.card_faces[1]);
         return { 
             name: data.name, 
             image: front.normal, 
             backImage: back.normal,
-            artCrop: front.artCrop // Use front face art for deck banners
+            artCrop: front.artCrop 
         };
     }
     
-    // Single faced
     if (data.image_uris) {
         return { 
             name: data.name, 
@@ -111,7 +108,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- PROFILE SCREEN (UPDATED) ---
+// --- PROFILE SCREEN (UPDATED ART CROP FIX) ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [deckName, setDeckName] = useState("");
     const [cmdrName, setCmdrName] = useState("");
@@ -125,7 +122,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const handleAddDeck = async () => {
         if (!deckName || !cmdrName) return;
         const cardData = await fetchCardData(cmdrName);
-        // UPDATED: Use artCrop if available, fallback to normal image
         const image = cardData ? (cardData.artCrop || cardData.image) : "";
         try {
             const res = await fetch(`${API_URL}/add-deck`, {
@@ -152,7 +148,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         } catch (err) { console.error(err); }
     };
 
-    // --- NEW: RESET STATS FUNCTION ---
     const handleResetStats = async () => {
         if(!window.confirm("Are you sure? This will set all Wins/Losses/Games to 0.")) return;
         try {
@@ -172,7 +167,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
             
-            {/* Global Stats */}
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -180,14 +174,12 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 <div style={statBoxStyle}><h3>📊 Win Rate</h3><span>{user.stats.gamesPlayed > 0 ? Math.round((user.stats.wins / user.stats.gamesPlayed)*100) : 0}%</span></div>
             </div>
 
-            {/* NEW: RESET BUTTON */}
             <div style={{marginBottom: '40px'}}>
                 <button onClick={handleResetStats} style={{background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold'}}>⚠️ Reset Global Stats</button>
             </div>
 
             <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
             
-            {/* Add Deck Form */}
             <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444'}}>
                 <input type="text" placeholder="Deck Name" value={deckName} onChange={e => setDeckName(e.target.value)} style={inputStyle} />
                 <div style={{position: 'relative'}}>
@@ -197,12 +189,15 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>+ Add Deck</button>
             </div>
 
-            {/* Deck List */}
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {user.decks && user.decks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        {/* UPDATED: Art Crop Style */}
-                        <div style={{height: '100px', background: `url(${deck.image}) center/cover`}}></div>
+                        {/* --- UPDATED: Height 180px, Center Top, No Repeat --- */}
+                        <div style={{
+                            height: '180px', 
+                            background: `url(${deck.image}) center top / cover no-repeat`,
+                            borderBottom: '1px solid #333'
+                        }}></div>
                         <div style={{padding: '15px'}}>
                             <div style={{fontWeight: 'bold', fontSize: '16px'}}>{deck.name}</div>
                             <div style={{fontSize: '12px', color: '#888', marginBottom: '10px'}}>{deck.commander}</div>
@@ -451,19 +446,13 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-// --- UPDATED: CARD MODAL (SIDE-BY-SIDE DISPLAY) ---
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
-      {/* Container for Images */}
       <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
-        
-        {/* Front Face */}
         <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        
-        {/* Back Face (Side by Side) */}
         {cardData.backImage && (
             <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
         )}
