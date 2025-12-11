@@ -19,19 +19,44 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS ---
+// --- API HELPERS (Updated to fetch Art Crop) ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
     const res = await fetch(`https://api.scryfall.com/cards/named?fuzzy=${encodeURIComponent(cardName)}`);
     const data = await res.json();
+    
+    // Helper to grab specific image types safely
+    const getImages = (face) => ({
+        normal: face.image_uris?.normal,
+        artCrop: face.image_uris?.art_crop // Grabbing the art crop specifically
+    });
+
     if (data.card_faces && data.card_faces.length > 1 && data.card_faces[0].image_uris) {
-        return { name: data.name, image: data.card_faces[0].image_uris.normal, backImage: data.card_faces[1].image_uris.normal };
+        // Double faced
+        const front = getImages(data.card_faces[0]);
+        const back = getImages(data.card_faces[1]);
+        return { 
+            name: data.name, 
+            image: front.normal, 
+            backImage: back.normal,
+            artCrop: front.artCrop // Use front face art for deck banners
+        };
     }
-    if (data.image_uris) return { name: data.name, image: data.image_uris.normal };
+    
+    // Single faced
+    if (data.image_uris) {
+        return { 
+            name: data.name, 
+            image: data.image_uris.normal,
+            artCrop: data.image_uris.art_crop 
+        };
+    }
+    
     return null;
   } catch (err) { return null; }
 };
+
 const fetchCommanderAutocomplete = async (text) => {
   if (text.length < 2) return [];
   try {
@@ -86,7 +111,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- PROFILE SCREEN (NEW) ---
+// --- PROFILE SCREEN (UPDATED) ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [deckName, setDeckName] = useState("");
     const [cmdrName, setCmdrName] = useState("");
@@ -100,7 +125,8 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const handleAddDeck = async () => {
         if (!deckName || !cmdrName) return;
         const cardData = await fetchCardData(cmdrName);
-        const image = cardData ? cardData.image : "";
+        // UPDATED: Use artCrop if available, fallback to normal image
+        const image = cardData ? (cardData.artCrop || cardData.image) : "";
         try {
             const res = await fetch(`${API_URL}/add-deck`, {
                 method: 'POST',
@@ -126,17 +152,37 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         } catch (err) { console.error(err); }
     };
 
+    // --- NEW: RESET STATS FUNCTION ---
+    const handleResetStats = async () => {
+        if(!window.confirm("Are you sure? This will set all Wins/Losses/Games to 0.")) return;
+        try {
+            const res = await fetch(`${API_URL}/reset-stats`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ userId: user.id })
+            });
+            const newStats = await res.json();
+            onUpdateUser({ ...user, stats: newStats });
+            alert("Stats have been reset.");
+        } catch (err) { console.error(err); }
+    };
+
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
             
             {/* Global Stats */}
-            <div style={{display: 'flex', gap: '20px', marginBottom: '40px'}}>
+            <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
                 <div style={statBoxStyle}><h3>🎲 Games</h3><span>{user.stats.gamesPlayed}</span></div>
                 <div style={statBoxStyle}><h3>📊 Win Rate</h3><span>{user.stats.gamesPlayed > 0 ? Math.round((user.stats.wins / user.stats.gamesPlayed)*100) : 0}%</span></div>
+            </div>
+
+            {/* NEW: RESET BUTTON */}
+            <div style={{marginBottom: '40px'}}>
+                <button onClick={handleResetStats} style={{background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold'}}>⚠️ Reset Global Stats</button>
             </div>
 
             <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
@@ -155,7 +201,8 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {user.decks && user.decks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        <div style={{height: '140px', background: `url(${deck.image}) center/cover`}}></div>
+                        {/* UPDATED: Art Crop Style */}
+                        <div style={{height: '100px', background: `url(${deck.image}) center/cover`}}></div>
                         <div style={{padding: '15px'}}>
                             <div style={{fontWeight: 'bold', fontSize: '16px'}}>{deck.name}</div>
                             <div style={{fontSize: '12px', color: '#888', marginBottom: '10px'}}>{deck.commander}</div>
@@ -170,7 +217,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED WITH DECK SELECT) ---
+// --- LOBBY ---
 const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -404,14 +451,22 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
+// --- UPDATED: CARD MODAL (SIDE-BY-SIDE DISPLAY) ---
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+      {/* Container for Images */}
       <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
+        
+        {/* Front Face */}
         <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        {cardData.backImage && <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />}
+        
+        {/* Back Face (Side by Side) */}
+        {cardData.backImage && (
+            <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+        )}
       </div>
     </div>
   );
