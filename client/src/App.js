@@ -11,11 +11,11 @@ const MONARCH_CARD = {
     image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" 
 };
 
-// Double-faced definition for Initiative (Token + Dungeon)
+// UPDATED: Corrected URLs for Undercity (Front) and Initiative (Back)
 const INITIATIVE_CARD = { 
-    name: "The Initiative // Undercity", 
-    image: "https://cards.scryfall.io/large/front/5/7/57a445d0-44f1-4966-924d-9d261e1b82eb.jpg", // The Initiative Token
-    backImage: "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg" // Undercity Dungeon
+    name: "Undercity // The Initiative", 
+    image: "https://cards.scryfall.io/large/back/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg", // Initiative (Back Face)
+    backImage: "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg" // Undercity (Front Face)
 };
 
 const getRoomId = () => {
@@ -27,7 +27,7 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- API HELPERS ---
+// --- API HELPERS (UPDATED FOR SIDE-BY-SIDE) ---
 const fetchCardData = async (cardName) => {
   if (!cardName) return null;
   try {
@@ -287,16 +287,19 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-// --- UPDATED: CARD MODAL (SIDE-BY-SIDE SUPPORT) ---
+// --- UPDATED: CARD MODAL (SIDE-BY-SIDE DISPLAY) ---
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
     <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+      {/* Container for Images */}
       <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
+        
         {/* Front Face */}
         <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        {/* Back Face (If exists) */}
+        
+        {/* Back Face (Side by Side) */}
         {cardData.backImage && (
             <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
         )}
@@ -405,7 +408,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             
-            {/* --- UPDATED HOVER DISPLAY: SUPPORTS SIDE-BY-SIDE --- */}
+            {/* --- UPDATED HOVER DISPLAY: SIDE-BY-SIDE --- */}
             {hoveredCard && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)', display: 'flex', gap: '5px' }}>
                     <img src={hoveredCard.image} alt="Card" style={{width: '240px', borderRadius: '10px'}} />
