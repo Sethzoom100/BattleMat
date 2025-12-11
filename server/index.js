@@ -85,19 +85,17 @@ app.delete('/delete-deck', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// UPDATE STATS (GLOBAL + DECK SPECIFIC)
+// UPDATE STATS
 app.post('/update-stats', async (req, res) => {
     try {
         const { userId, win, loss, deckId } = req.body;
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
 
-        // Update Global Stats
         if (win) user.stats.wins += 1;
         if (loss) user.stats.losses += 1;
         user.stats.gamesPlayed += 1;
 
-        // Update Deck Stats (if a deck was used)
         if (deckId) {
             const deck = user.decks.find(d => d._id.toString() === deckId);
             if (deck) {
@@ -107,8 +105,26 @@ app.post('/update-stats', async (req, res) => {
         }
 
         await user.save();
-        // Return full user object to keep frontend synced
         res.json({ stats: user.stats, decks: user.decks });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- NEW: RESET STATS ROUTE ---
+app.post('/reset-stats', async (req, res) => {
+    try {
+        const { userId } = req.body;
+        const user = await User.findById(userId);
+        if (!user) return res.status(404).json({ msg: "User not found" });
+
+        // Reset Global Stats
+        user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
+        
+        // Optional: We can also reset all deck stats if you want, but usually players 
+        // prefer to keep deck history even if season stats reset. 
+        // For now, we only reset the GLOBAL player score.
+        
+        await user.save();
+        res.json(user.stats);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
