@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -133,7 +133,7 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
     );
 };
 
-// --- NEW: DECK SELECTION MODAL (Between Games) ---
+// --- DECK SELECTION MODAL ---
 const DeckSelectionModal = ({ user, onConfirm }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
@@ -728,7 +728,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
-                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} secretData={playerData?.secretCommanders?.primary} onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })} />
+                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => {}} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} secretData={playerData?.secretCommanders?.primary} onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })} />
                 {(isMyStream || playerData?.commanders?.partner || playerData?.secretCommanders?.partner) && (
                     <>
                         <span style={{color: '#666'}}>|</span>
@@ -736,7 +736,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                             placeholder="Partner" 
                             cardData={playerData?.commanders?.partner} 
                             isMyStream={isMyStream} 
-                            onSelect={(n) => handleSelectCommander(n, 'partner')} 
+                            onSelect={(n) => {}} 
                             onHover={setHoveredCard} 
                             onLeave={() => setHoveredCard(null)}
                             secretData={playerData?.secretCommanders?.partner}
@@ -1088,18 +1088,23 @@ function App() {
         myPeer.on('open', id => {
           setMyId(id);
           
+          // CONSTRUCT INITIAL STATE
           const initialData = { 
               life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9',
               commanders: {}, 
               secretCommanders: null,
+              // Store user info in gameState for namebars and stats
               username: user ? user.username : `Guest ${id.substr(0,4)}`,
               dbId: user ? user.id : null,
               deckId: selectedDeckId || null
           };
 
           if (deckData) {
-              if (isSecret) initialData.secretCommanders = deckData; 
-              else initialData.commanders = deckData; 
+              if (isSecret) {
+                  initialData.secretCommanders = deckData; 
+              } else {
+                  initialData.commanders = deckData; 
+              }
           }
 
           setGameState(prev => ({ ...prev, [id]: initialData }));
