@@ -7,8 +7,8 @@ const socket = io('https://battlemat.onrender.com');
 
 // --- ASSETS ---
 const MONARCH_CARD_IMG = "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg";
-// Updated Initiative Link to ensure it loads
-const INITIATIVE_CARD_IMG = "https://cards.scryfall.io/large/front/5/7/57a445d0-44f1-4966-924d-9d261e1b82eb.jpg";
+// UPDATED: Fixed link to "Undercity" (The Initiative Dungeon)
+const INITIATIVE_CARD_IMG = "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg";
 
 const getRoomId = () => {
   const path = window.location.pathname.substring(1); 
