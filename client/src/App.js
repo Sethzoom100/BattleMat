@@ -57,7 +57,7 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
-// --- DRAGGABLE TOKEN (PERCENTAGE WIDTH + COUNTER) ---
+// --- DRAGGABLE TOKEN (FIXED: BUTTONS HIDDEN IF NOT OWNER) ---
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -105,18 +105,20 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
-  // Handle Counter Clicks (Stop propagation so we don't drag the token)
+  // Handle Counter Clicks (SAFETY CHECK ADDED)
   const handleCounterChange = (e, amount) => {
       e.stopPropagation(); 
       e.preventDefault();
-      onUpdate({ ...token, counter: (token.counter || 0) + amount });
+      if (isMyStream) {
+        onUpdate({ ...token, counter: (token.counter || 0) + amount });
+      }
   };
 
   return (
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        width: '12%', minWidth: '45px', 
+        width: '10%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -125,21 +127,22 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
       <div style={{position: 'relative', width: '100%'}}>
         <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
         
-        {/* --- GENERIC COUNTER (BOTTOM LEFT) --- */}
+        {/* --- GENERIC COUNTER (ONLY SHOW BUTTONS IF MY STREAM) --- */}
         {token.counter !== undefined && token.counter !== null && (
             <div 
-                onMouseDown={(e) => e.stopPropagation()} // Prevent dragging when clicking counter
+                onMouseDown={(e) => e.stopPropagation()} 
                 onClick={(e) => e.stopPropagation()}
                 style={{
                     position: 'absolute', bottom: '-8px', left: '-8px',
                     background: '#111', border: '1px solid #666', borderRadius: '4px',
-                    display: 'flex', alignItems: 'center', boxShadow: '0 2px 5px black',
-                    overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none' // Counter stays upright if possible, or rotates with it. keeping simple for now.
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', // Centering for read-only
+                    boxShadow: '0 2px 5px black',
+                    overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none'
                 }}
             >
-                <button onClick={(e) => handleCounterChange(e, -1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>-</button>
+                {isMyStream && <button onClick={(e) => handleCounterChange(e, -1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>-</button>}
                 <span style={{fontSize: '11px', fontWeight: 'bold', color: '#fff', padding: '0 4px', minWidth: '14px', textAlign: 'center'}}>{token.counter}</span>
-                <button onClick={(e) => handleCounterChange(e, 1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>+</button>
+                {isMyStream && <button onClick={(e) => handleCounterChange(e, 1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>+</button>}
             </div>
         )}
       </div>
@@ -147,7 +150,6 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
   );
 };
 
-// --- UPDATED CONTEXT MENU ---
 const TokenContextMenu = ({ x, y, onDelete, onInspect, onToggleCounter, onClose }) => (
     <>
         <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
