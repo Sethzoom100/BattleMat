@@ -61,7 +61,6 @@ app.post('/login', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// ADD DECK
 app.post('/add-deck', async (req, res) => {
     try {
         const { userId, name, commander, image } = req.body;
@@ -73,7 +72,6 @@ app.post('/add-deck', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// DELETE DECK
 app.delete('/delete-deck', async (req, res) => {
     try {
         const { userId, deckId } = req.body;
@@ -85,7 +83,6 @@ app.delete('/delete-deck', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// UPDATE STATS
 app.post('/update-stats', async (req, res) => {
     try {
         const { userId, win, loss, deckId } = req.body;
@@ -109,20 +106,42 @@ app.post('/update-stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- NEW: RESET STATS ROUTE ---
+// --- NEW: FINISH GAME ROUTE (Updates stats for ALL players) ---
+app.post('/finish-game', async (req, res) => {
+    try {
+        const { results } = req.body; // Expects array: [{ userId, result: 'win'/'loss', deckId (optional) }]
+        
+        const updates = results.map(async (player) => {
+            if (!player.userId) return; // Skip guests
+            
+            const user = await User.findById(player.userId);
+            if (!user) return;
+
+            user.stats.gamesPlayed += 1;
+            if (player.result === 'win') user.stats.wins += 1;
+            if (player.result === 'loss') user.stats.losses += 1;
+
+            if (player.deckId) {
+                const deck = user.decks.find(d => d._id.toString() === player.deckId);
+                if (deck) {
+                    if (player.result === 'win') deck.wins += 1;
+                    if (player.result === 'loss') deck.losses += 1;
+                }
+            }
+            return user.save();
+        });
+
+        await Promise.all(updates);
+        res.json({ msg: "Game recorded for all players" });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
 app.post('/reset-stats', async (req, res) => {
     try {
         const { userId } = req.body;
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
-
-        // Reset Global Stats
         user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
-        
-        // Optional: We can also reset all deck stats if you want, but usually players 
-        // prefer to keep deck history even if season stats reset. 
-        // For now, we only reset the GLOBAL player score.
-        
         await user.save();
         res.json(user.stats);
     } catch (err) { res.status(500).json({ error: err.message }); }
