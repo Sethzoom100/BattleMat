@@ -21,18 +21,26 @@ const io = new Server(server, { cors: corsOptions });
 const socketToRoom = {};
 const socketToUser = {}; 
 
-app.get('/', (req, res) => { res.send('BattleMat Server Running (Final Fix)'); });
+app.get('/', (req, res) => { res.send('BattleMat Server Running (Sync Fix)'); });
 
 io.on('connection', (socket) => {
     
     socket.on('join-room', (roomId, userId) => {
         socket.join(roomId);
-        // Map Socket ID to Room AND Peer ID
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
         
         console.log(`User ${userId} joined room ${roomId}`);
         socket.to(roomId).emit('user-connected', userId);
+    });
+
+    // --- NEW: EXPLICIT SYNC HANDLER ---
+    // When a new user asks "What is the state?", tell everyone else to send it.
+    socket.on('sync-request', () => {
+        const roomId = socketToRoom[socket.id];
+        if (roomId) {
+            socket.to(roomId).emit('sync-requested');
+        }
     });
 
     socket.on('update-game-state', ({ userId, data }) => {
@@ -55,18 +63,15 @@ io.on('connection', (socket) => {
         if (roomId) io.to(roomId).emit('seat-order-updated', newOrder);
     });
 
-    // --- ROBUST DISCONNECT ---
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
         const userId = socketToUser[socket.id];
         
         if (roomId && userId) {
             console.log(`User ${userId} disconnected from ${roomId}`);
-            // Send the specific Peer ID to remove
             socket.to(roomId).emit('user-disconnected', userId);
         }
         
-        // Cleanup
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
     });
