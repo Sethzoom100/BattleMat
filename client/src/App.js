@@ -108,7 +108,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- PROFILE SCREEN (UPDATED ART CROP FIX) ---
+// --- PROFILE SCREEN (UPDATED ZOOM) ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [deckName, setDeckName] = useState("");
     const [cmdrName, setCmdrName] = useState("");
@@ -192,10 +192,10 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {user.decks && user.decks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        {/* --- UPDATED: Height 180px, Center Top, No Repeat --- */}
+                        {/* --- UPDATED: Zoom 120%, Offset Top 20% --- */}
                         <div style={{
                             height: '180px', 
-                            background: `url(${deck.image}) center top / cover no-repeat`,
+                            background: `url(${deck.image}) center 20% / 120% no-repeat`,
                             borderBottom: '1px solid #333'
                         }}></div>
                         <div style={{padding: '15px'}}>
