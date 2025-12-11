@@ -57,7 +57,7 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
-// --- DRAGGABLE TOKEN (PERCENTAGE WIDTH) ---
+// --- DRAGGABLE TOKEN (FIXED: BUTTONS HIDDEN IF NOT OWNER) ---
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -105,29 +105,57 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
   }, [isDragging, handleMouseMove, handleMouseUp]);
 
+  // Handle Counter Clicks (SAFETY CHECK ADDED)
+  const handleCounterChange = (e, amount) => {
+      e.stopPropagation(); 
+      e.preventDefault();
+      if (isMyStream) {
+        onUpdate({ ...token, counter: (token.counter || 0) + amount });
+      }
+  };
+
   return (
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        // --- UPDATED: 10% WIDTH (Approx 85px on standard screens) ---
-        width: '10%', 
-        minWidth: '45px', 
-        
+        width: '10%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
       }}
     >
-      <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
+      <div style={{position: 'relative', width: '100%'}}>
+        <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
+        
+        {/* --- GENERIC COUNTER (ONLY SHOW BUTTONS IF MY STREAM) --- */}
+        {token.counter !== undefined && token.counter !== null && (
+            <div 
+                onMouseDown={(e) => e.stopPropagation()} 
+                onClick={(e) => e.stopPropagation()}
+                style={{
+                    position: 'absolute', bottom: '-8px', left: '-8px',
+                    background: '#111', border: '1px solid #666', borderRadius: '4px',
+                    display: 'flex', alignItems: 'center', justifyContent: 'center', // Centering for read-only
+                    boxShadow: '0 2px 5px black',
+                    overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none'
+                }}
+            >
+                {isMyStream && <button onClick={(e) => handleCounterChange(e, -1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>-</button>}
+                <span style={{fontSize: '11px', fontWeight: 'bold', color: '#fff', padding: '0 4px', minWidth: '14px', textAlign: 'center'}}>{token.counter}</span>
+                {isMyStream && <button onClick={(e) => handleCounterChange(e, 1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>+</button>}
+            </div>
+        )}
+      </div>
     </div>
   );
 };
 
-const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
+const TokenContextMenu = ({ x, y, onDelete, onInspect, onToggleCounter, onClose }) => (
     <>
         <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
-        <div style={{ position: 'absolute', top: y, left: x, background: '#222', border: '1px solid #555', borderRadius: '4px', zIndex: 2000, minWidth: '100px', boxShadow: '0 4px 15px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
+        <div style={{ position: 'absolute', top: y, left: x, background: '#222', border: '1px solid #555', borderRadius: '4px', zIndex: 2000, minWidth: '120px', boxShadow: '0 4px 15px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
             <div onClick={(e) => { e.stopPropagation(); onInspect(); onClose(); }} style={menuItemStyle}>🔍 Inspect</div>
+            <div onClick={(e) => { e.stopPropagation(); onToggleCounter(); onClose(); }} style={menuItemStyle}>🔢 Counter</div>
             <div onClick={(e) => { e.stopPropagation(); onDelete(); onClose(); }} style={{...menuItemStyle, color: '#ef4444', borderTop: '1px solid #333'}}>🗑️ Delete</div>
         </div>
     </>
@@ -166,23 +194,59 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
-const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
+const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
+  
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
+  
   return (
     <div style={{ position: 'relative', width: '290px', zIndex: 9000, display: 'flex', gap: '5px' }}>
       <div style={{flex: 1, position: 'relative'}}>
-        <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { setShowHistory(false); if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
+        <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
         {showDropdown && suggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1a1a1a', border: '1px solid #444', maxHeight: '400px', overflowY: 'auto', zIndex: 100001, boxShadow: '0 10px 40px rgba(0,0,0,0.9)' }}>{suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{name}</div>)}</div>}
       </div>
-      <div style={{position: 'relative'}}><button onClick={() => { setShowHistory(!showHistory); setShowDropdown(false); }} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
-      {showHistory && <div style={{ position: 'absolute', top: '100%', right: 0, width: '200px', marginTop: '5px', background: '#1a1a1a', border: '1px solid #444', zIndex: 100002 }}>{searchHistory.map((card, i) => <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{card.name}</div>)}</div>}</div>
+      <button onClick={onToggleHistory} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
     </div>
   );
+};
+
+const HistoryModal = ({ history, onSelect, onClose }) => {
+    return (
+        <div 
+            onClick={onClose}
+            style={{ 
+                position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                background: 'rgba(0,0,0,0.9)', zIndex: 200000,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(8px)'
+            }}
+        >
+            <div style={{color: '#999', marginBottom: '20px', fontSize: '20px', letterSpacing: '2px', fontWeight: 'bold'}}>SEARCH HISTORY</div>
+            <div 
+                onClick={(e) => e.stopPropagation()} 
+                style={{ 
+                    display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '15px', 
+                    maxWidth: '1200px', width: '90%', padding: '20px'
+                }}
+            >
+                {history.length === 0 && <div style={{color: '#666', gridColumn: 'span 6', textAlign: 'center'}}>No history yet.</div>}
+                {history.map((card, i) => (
+                    <div key={i} onClick={() => { onSelect(card); onClose(); }} style={{ cursor: 'pointer', position: 'relative' }}>
+                        <img 
+                            src={card.image} 
+                            alt={card.name} 
+                            style={{ width: '100%', borderRadius: '8px', transition: 'transform 0.15s ease', border: '1px solid #444', boxShadow: '0 5px 15px black' }} 
+                            onMouseEnter={(e) => { e.target.style.transform = 'scale(1.2)'; e.target.style.zIndex = '100'; }}
+                            onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; e.target.style.zIndex = '1'; }}
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 };
 
 const CardModal = ({ cardData, onClose }) => {
@@ -314,7 +378,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
             <DiceOverlay activeRoll={playerData?.activeRoll} />
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
-            {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onClose={() => setTokenMenu(null)} />}
+            {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
             <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
                 <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
@@ -324,7 +388,9 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                
+                                {/* --- NEW ELIMINATE BUTTON --- */}
+                                <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
+
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
                                     <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
@@ -386,17 +452,19 @@ function App() {
   const [cameraRatio, setCameraRatio] = useState('16:9'); 
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
+  const [showHistory, setShowHistory] = useState(false); // LIFTED STATE FOR HISTORY
 
-  // REFS FOR SYNC AND STATE TRACKING
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
   const turnStateRef = useRef({ activeId: null, count: 1 });
   const myIdRef = useRef(null); 
+  const cameraRatioRef = useRef('16:9');
 
   useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
   useEffect(() => { seatOrderRef.current = seatOrder; }, [seatOrder]);
   useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
+  useEffect(() => { cameraRatioRef.current = cameraRatio; }, [cameraRatio]);
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
@@ -412,15 +480,35 @@ function App() {
         const myData = prev[myId] || {};
         const allCmdDmg = myData.cmdDamageTaken || {};
         const specificOppDmg = allCmdDmg[opponentId] || { primary: 0, partner: 0 };
-        const newVal = Math.max(0, (specificOppDmg[type] || 0) + amount);
-        const newOppDmg = { ...specificOppDmg, [type]: newVal };
+        
+        // --- AUTO-LIFE UPDATE ---
+        const currentCmdDmg = specificOppDmg[type] || 0;
+        const newCmdDmg = Math.max(0, currentCmdDmg + amount);
+        
+        let newLife = myData.life ?? 40;
+        if (newCmdDmg !== currentCmdDmg) {
+            newLife -= (newCmdDmg - currentCmdDmg);
+        }
+
+        const newOppDmg = { ...specificOppDmg, [type]: newCmdDmg };
         const newAllCmdDmg = { ...allCmdDmg, [opponentId]: newOppDmg };
-        const newMyData = { ...myData, cmdDamageTaken: newAllCmdDmg };
+        
+        const newMyData = { 
+            ...myData, 
+            cmdDamageTaken: newAllCmdDmg,
+            life: newLife
+        };
         socket.emit('update-game-state', { userId: myId, data: newMyData });
         return { ...prev, [myId]: newMyData };
       });
     }
   }, [myId]);
+
+  const handleGlobalCardFound = (cardData) => {
+    setViewCard(cardData);
+    // --- UPDATED: KEEP 12 CARDS FOR THE 2x6 GRID ---
+    setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 12));
+  };
 
   const handleMyLifeChange = useCallback((amount) => {
      const currentLife = gameState[myId]?.life ?? 40;
@@ -538,6 +626,11 @@ function App() {
   const switchCameraStream = () => {
     if (!myStream) return;
     const targetLabel = cameraRatio === '16:9' ? '4:3' : '16:9';
+    setCameraRatio(targetLabel); // Update local state
+    
+    // --- SYNC RATIO TO SERVER IMMEDIATELY ---
+    handleUpdateGame(myId, { cameraRatio: targetLabel });
+
     const constraints = targetLabel === '16:9' 
         ? { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 }
         : { width: { ideal: 640 }, height: { ideal: 480 }, aspectRatio: 1.333333333 };
@@ -545,7 +638,6 @@ function App() {
     navigator.mediaDevices.getUserMedia({ video: constraints, audio: true }).then(newStream => {
         setMyStream(newStream);
         streamRef.current = newStream;
-        setCameraRatio(targetLabel);
         if (peerRef.current) {
             Object.values(peerRef.current.connections).forEach(conns => {
                 conns.forEach(conn => {
@@ -572,16 +664,14 @@ function App() {
     socket.emit('update-seat-order', newOrder);
   };
 
-  const handleGlobalCardFound = (cardData) => {
-    setViewCard(cardData);
-    setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 10));
-  };
-
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (document.activeElement.tagName === 'INPUT') return;
       if (e.key === 'ArrowUp') { e.preventDefault(); safeLifeChange(1); }
       if (e.key === 'ArrowDown') { e.preventDefault(); safeLifeChange(-1); }
+      // --- NEW: ARROW LEFT/RIGHT SHORTCUTS ---
+      if (e.key === 'ArrowLeft') { e.preventDefault(); safeLifeChange(-5); }
+      if (e.key === 'ArrowRight') { e.preventDefault(); safeLifeChange(5); }
       if (e.code === 'Space') { e.preventDefault(); passTurn(); }
     };
     window.addEventListener('keydown', handleKeyDown);
@@ -615,14 +705,14 @@ function App() {
 
           myPeer.on('open', id => {
             setMyId(id);
-            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
+            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
             socket.emit('join-room', ROOM_ID, id);
             
             // --- SYNC FIX: SEND OWN STATE TO SERVER MEMORY ON JOIN ---
             socket.emit('update-game-state', {
                 userId: id,
-                data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] }
+                data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' }
             });
           });
 
@@ -709,10 +799,11 @@ function App() {
         @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
       <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
+      {showHistory && <HistoryModal history={searchHistory} onSelect={handleGlobalCardFound} onClose={() => setShowHistory(false)} />}
       <div style={{ height: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
         <div style={{ height: '30px', background: '#000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #333', zIndex: 200000, flexShrink: 0 }}>
           <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}><div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div><div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div></div>
-          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} searchHistory={searchHistory} /></div>
+          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
             <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
