@@ -108,7 +108,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- FINISH GAME MODAL (NEW) ---
+// --- FINISH GAME MODAL ---
 const FinishGameModal = ({ players, onFinish, onClose }) => {
     const [winnerId, setWinnerId] = useState(null);
 
@@ -343,6 +343,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
+        
         {user && user.decks && user.decks.length > 0 && (
             <div>
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
@@ -694,6 +695,11 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                                 
+                                <div style={{padding: '8px', borderTop: '1px solid #444', display: 'flex', gap: '5px'}}>
+                                    <button onClick={() => onRecordStat(true)} style={{flex: 1, background: '#166534', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🏆 WIN</button>
+                                    <button onClick={() => onRecordStat(false)} style={{flex: 1, background: '#991b1b', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>❌ LOSS</button>
+                                </div>
+
                                 <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
@@ -837,80 +843,6 @@ function App() {
   const handleClaimStatus = (type) => {
       socket.emit('claim-status', { type, userId: myId });
   };
-
-  const handleInvite = () => {
-    navigator.clipboard.writeText(window.location.href);
-    setInviteText("Copied!");
-    setTimeout(() => setInviteText("Invite"), 2000);
-  };
-
-  const calculateLayout = useCallback(() => {
-    if (!containerRef.current) return;
-    const count = seatOrder.length || 1;
-    const containerW = containerRef.current.clientWidth;
-    const containerH = containerRef.current.clientHeight;
-    let bestArea = 0;
-    let bestConfig = { width: 0, height: 0 };
-    for (let cols = 1; cols <= count; cols++) {
-      const rows = Math.ceil(count / cols);
-      const maxW = containerW / cols;
-      const maxH = containerH / rows;
-      let w = maxW;
-      let h = w / (16/9);
-      if (h > maxH) { h = maxH; w = h * (16/9); }
-      if ((w * h) > bestArea) { bestArea = w * h; bestConfig = { width: w, height: h }; }
-    }
-    setLayout(bestConfig);
-  }, [seatOrder.length]);
-
-  useLayoutEffect(() => {
-    calculateLayout();
-    window.addEventListener('resize', calculateLayout);
-    return () => window.removeEventListener('resize', calculateLayout);
-  }, [calculateLayout]);
-
-  const isPlayerEliminated = (data) => {
-    if (!data) return false;
-    const life = data.life ?? 40;
-    if (life <= 0) return true;
-    if ((data.poison || 0) >= 10) return true;
-    return false;
-  };
-
-  const passTurn = useCallback(() => {
-    if (seatOrder.length === 0) return;
-    if (turnState.activeId === null) {
-        const newState = { activeId: seatOrder[0], count: 1 };
-        setTurnState(newState);
-        socket.emit('update-turn-state', newState);
-        return; 
-    }
-    const currentIndex = seatOrder.indexOf(turnState.activeId);
-    if (currentIndex === -1) return; 
-
-    let flowOrder = [];
-    if (seatOrder.length === 4) {
-        flowOrder = [0, 1, 3, 2];
-    } else {
-        flowOrder = seatOrder.map((_, i) => i);
-    }
-    let flowIndex = flowOrder.indexOf(currentIndex);
-    if (flowIndex === -1) flowIndex = 0;
-    let attempts = 0;
-    let nextSeatId = null;
-    let nextTurnCount = turnState.count;
-    do {
-        flowIndex = (flowIndex + 1) % flowOrder.length;
-        if (flowIndex === 0) nextTurnCount++;
-        const seatIdx = flowOrder[flowIndex];
-        nextSeatId = seatOrder[seatIdx];
-        attempts++;
-        if (attempts > seatOrder.length) break; 
-    } while (isPlayerEliminated(gameState[nextSeatId]));
-    const newState = { activeId: nextSeatId, count: nextTurnCount };
-    setTurnState(newState);
-    socket.emit('update-turn-state', newState);
-  }, [seatOrder, turnState, gameState]);
 
   // --- NEW: FINISH GAME LOGIC ---
   const handleFinishGame = async (winnerId) => {
