@@ -21,21 +21,22 @@ const io = new Server(server, { cors: corsOptions });
 const socketToRoom = {};
 const socketToUser = {}; 
 
-app.get('/', (req, res) => { res.send('BattleMat Server Running (Sync Fix)'); });
+app.get('/', (req, res) => { res.send('BattleMat Server Running (Spectator Update)'); });
 
 io.on('connection', (socket) => {
     
-    socket.on('join-room', (roomId, userId) => {
+    // UPDATED: Accept isSpectator flag
+    socket.on('join-room', (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
         
-        console.log(`User ${userId} joined room ${roomId}`);
-        socket.to(roomId).emit('user-connected', userId);
+        console.log(`User ${userId} joined room ${roomId} (Spectator: ${isSpectator})`);
+        
+        // Pass the isSpectator flag to everyone else so they know how to handle this user
+        socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
 
-    // --- NEW: EXPLICIT SYNC HANDLER ---
-    // When a new user asks "What is the state?", tell everyone else to send it.
     socket.on('sync-request', () => {
         const roomId = socketToRoom[socket.id];
         if (roomId) {
