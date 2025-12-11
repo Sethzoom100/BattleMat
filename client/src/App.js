@@ -3,20 +3,12 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-// NOTE: Change this to 'http://localhost:3001' if testing locally!
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
-const MONARCH_CARD = { 
-    name: "The Monarch", 
-    image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" 
-};
-const INITIATIVE_CARD = { 
-    name: "Undercity // The Initiative", 
-    image: "https://cards.scryfall.io/large/back/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg", 
-    backImage: "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg" 
-};
+const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
+const INITIATIVE_CARD = { name: "Undercity // The Initiative", image: "https://cards.scryfall.io/large/back/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg", backImage: "https://cards.scryfall.io/large/front/2/c/2c65185b-6cf0-451d-985e-56aa45d9a57d.jpg" };
 
 const getRoomId = () => {
   const path = window.location.pathname.substring(1); 
@@ -37,17 +29,8 @@ const fetchCardData = async (cardName) => {
         return { name: data.name, image: data.card_faces[0].image_uris.normal, backImage: data.card_faces[1].image_uris.normal };
     }
     if (data.image_uris) return { name: data.name, image: data.image_uris.normal };
-    if (data.card_faces && data.image_uris) return { name: data.name, image: data.image_uris.normal };
     return null;
   } catch (err) { return null; }
-};
-const fetchAnyCardAutocomplete = async (text) => {
-  if (text.length < 2) return [];
-  try {
-    const res = await fetch(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(text)}`);
-    const data = await res.json();
-    return data.data || [];
-  } catch (err) { return []; }
 };
 const fetchCommanderAutocomplete = async (text) => {
   if (text.length < 2) return [];
@@ -59,16 +42,22 @@ const fetchCommanderAutocomplete = async (text) => {
     return [];
   } catch (err) { return []; }
 };
+const fetchAnyCardAutocomplete = async (text) => {
+  if (text.length < 2) return [];
+  try {
+    const res = await fetch(`https://api.scryfall.com/cards/autocomplete?q=${encodeURIComponent(text)}`);
+    const data = await res.json();
+    return data.data || [];
+  } catch (err) { return []; }
+};
 
 // --- AUTH COMPONENT ---
 const AuthModal = ({ onClose, onLogin }) => {
     const [isRegister, setIsRegister] = useState(false);
     const [username, setUsername] = useState("");
     const [password, setPassword] = useState("");
-    const [error, setError] = useState("");
-
+    
     const handleSubmit = async () => {
-        setError("");
         const endpoint = isRegister ? '/register' : '/login';
         try {
             const res = await fetch(`${API_URL}${endpoint}`, {
@@ -77,38 +66,112 @@ const AuthModal = ({ onClose, onLogin }) => {
                 body: JSON.stringify({ username, password })
             });
             const data = await res.json();
-            
-            if (!res.ok) throw new Error(data.msg || "Error");
-            
-            if (isRegister) {
-                setIsRegister(false); 
-                alert("Account created! Please log in.");
-            } else {
-                onLogin(data.user, data.token);
-                onClose();
-            }
-        } catch (err) {
-            setError(err.message);
-        }
+            if (!res.ok) throw new Error(data.msg);
+            if (isRegister) { setIsRegister(false); alert("Account created! Log in."); }
+            else { onLogin(data.user, data.token); onClose(); }
+        } catch (err) { alert(err.message); }
     };
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '300px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '15px' }}>
                 <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>{isRegister ? "Create Account" : "Login"}</h2>
-                {error && <div style={{color: '#ef4444', fontSize: '12px', textAlign: 'center'}}>{error}</div>}
                 <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
                 <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
                 <button onClick={handleSubmit} style={{padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold'}}>{isRegister ? "Register" : "Login"}</button>
-                <div style={{fontSize: '12px', textAlign: 'center', cursor: 'pointer', color: '#aaa'}} onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Already have an account? Login" : "No account? Create one"}</div>
+                <div style={{fontSize: '12px', textAlign: 'center', cursor: 'pointer', color: '#aaa'}} onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Have account? Login" : "No account? Create one"}</div>
                 <button onClick={onClose} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px'}}>Cancel</button>
             </div>
         </div>
     );
 };
 
-// --- LOBBY ---
-const Lobby = ({ onJoin, user, onOpenAuth }) => {
+// --- PROFILE SCREEN (NEW) ---
+const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
+    const [deckName, setDeckName] = useState("");
+    const [cmdrName, setCmdrName] = useState("");
+    const [suggestions, setSuggestions] = useState([]);
+
+    const handleSearchCmdr = async (val) => {
+        setCmdrName(val);
+        if (val.length > 2) setSuggestions(await fetchCommanderAutocomplete(val));
+    };
+
+    const handleAddDeck = async () => {
+        if (!deckName || !cmdrName) return;
+        const cardData = await fetchCardData(cmdrName);
+        const image = cardData ? cardData.image : "";
+        try {
+            const res = await fetch(`${API_URL}/add-deck`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ userId: user.id, name: deckName, commander: cmdrName, image })
+            });
+            const updatedDecks = await res.json();
+            onUpdateUser({ ...user, decks: updatedDecks });
+            setDeckName(""); setCmdrName(""); setSuggestions([]);
+        } catch (err) { console.error(err); }
+    };
+
+    const handleDeleteDeck = async (deckId) => {
+        if(!window.confirm("Delete this deck?")) return;
+        try {
+            const res = await fetch(`${API_URL}/delete-deck`, {
+                method: 'DELETE',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ userId: user.id, deckId })
+            });
+            const updatedDecks = await res.json();
+            onUpdateUser({ ...user, decks: updatedDecks });
+        } catch (err) { console.error(err); }
+    };
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
+            <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
+            <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
+            
+            {/* Global Stats */}
+            <div style={{display: 'flex', gap: '20px', marginBottom: '40px'}}>
+                <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
+                <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
+                <div style={statBoxStyle}><h3>🎲 Games</h3><span>{user.stats.gamesPlayed}</span></div>
+                <div style={statBoxStyle}><h3>📊 Win Rate</h3><span>{user.stats.gamesPlayed > 0 ? Math.round((user.stats.wins / user.stats.gamesPlayed)*100) : 0}%</span></div>
+            </div>
+
+            <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
+            
+            {/* Add Deck Form */}
+            <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444'}}>
+                <input type="text" placeholder="Deck Name" value={deckName} onChange={e => setDeckName(e.target.value)} style={inputStyle} />
+                <div style={{position: 'relative'}}>
+                    <input type="text" placeholder="Commander" value={cmdrName} onChange={e => handleSearchCmdr(e.target.value)} style={inputStyle} />
+                    {suggestions.length > 0 && <div style={{position: 'absolute', top: '100%', left: 0, width: '100%', background: '#333', border: '1px solid #555', zIndex: 10}}>{suggestions.map((s,i) => <div key={i} onClick={() => { setCmdrName(s); setSuggestions([]); }} style={{padding: '5px', cursor: 'pointer'}}>{s}</div>)}</div>}
+                </div>
+                <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer'}}>+ Add Deck</button>
+            </div>
+
+            {/* Deck List */}
+            <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
+                {user.decks && user.decks.map(deck => (
+                    <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
+                        <div style={{height: '140px', background: `url(${deck.image}) center/cover`}}></div>
+                        <div style={{padding: '15px'}}>
+                            <div style={{fontWeight: 'bold', fontSize: '16px'}}>{deck.name}</div>
+                            <div style={{fontSize: '12px', color: '#888', marginBottom: '10px'}}>{deck.commander}</div>
+                            <div style={{fontSize: '13px'}}>Win Rate: {deck.wins + deck.losses > 0 ? Math.round((deck.wins / (deck.wins+deck.losses))*100) : 0}%</div>
+                            <div style={{fontSize: '12px', color: '#666'}}>{deck.wins}W - {deck.losses}L</div>
+                            <button onClick={() => handleDeleteDeck(deck._id)} style={{marginTop: '10px', width: '100%', padding: '5px', background: '#7f1d1d', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontSize: '11px'}}>Delete Deck</button>
+                        </div>
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
+};
+
+// --- LOBBY (UPDATED WITH DECK SELECT) ---
+const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -147,8 +210,8 @@ const Lobby = ({ onJoin, user, onOpenAuth }) => {
         
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff'}}>Welcome, {user.username}</div>
-                <div style={{color: '#aaa', fontSize: '14px'}}>Wins: {user.stats.wins} | Losses: {user.stats.losses} | Games: {user.stats.gamesPlayed}</div>
+                <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
+                <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
             </div>
         ) : (
             <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
@@ -170,6 +233,17 @@ const Lobby = ({ onJoin, user, onOpenAuth }) => {
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
+        {/* --- DECK SELECTOR --- */}
+        {user && user.decks && user.decks.length > 0 && (
+            <div>
+                <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
+                <select value={selectedDeckId} onChange={e => onSelectDeck(e.target.value)} style={{width: '100%', padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none', marginTop: '5px'}}>
+                    <option value="">-- No Deck (Stats to Global only) --</option>
+                    {user.decks.map(d => <option key={d._id} value={d._id}>{d.name} ({d.commander})</option>)}
+                </select>
+            </div>
+        )}
+
         <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Camera Source</label>
         <select value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)} style={{ padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none' }}>
             {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${device.deviceId.slice(0,5)}...`}</option>)}
@@ -181,6 +255,8 @@ const Lobby = ({ onJoin, user, onOpenAuth }) => {
   );
 };
 const lobbyBtnStyle = { padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer', background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' };
+const statBoxStyle = { background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444' };
+const inputStyle = { padding: '8px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px' };
 
 const DiceOverlay = ({ activeRoll }) => {
   if (!activeRoll) return null;
@@ -335,9 +411,7 @@ const CardModal = ({ cardData, onClose }) => {
       <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
         <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
         <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        {cardData.backImage && (
-            <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        )}
+        {cardData.backImage && <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />}
       </div>
     </div>
   );
@@ -555,6 +629,8 @@ function App() {
   const [user, setUser] = useState(null);
   const [token, setToken] = useState(null);
   const [showAuthModal, setShowAuthModal] = useState(false);
+  const [showProfile, setShowProfile] = useState(false);
+  const [selectedDeckId, setSelectedDeckId] = useState("");
 
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
@@ -614,7 +690,7 @@ function App() {
       socket.emit('claim-status', { type, userId: myId });
   };
 
-  // --- NEW: RECORD STATS ---
+  // --- RECORD STATS (WITH DECK) ---
   const handleRecordStat = async (isWin) => {
       if (!user || !token) {
           alert("Please login to record stats!");
@@ -627,11 +703,11 @@ function App() {
                   'Content-Type': 'application/json',
                   'Authorization': `Bearer ${token}` 
               },
-              body: JSON.stringify({ userId: user.id, win: isWin, loss: !isWin })
+              body: JSON.stringify({ userId: user.id, win: isWin, loss: !isWin, deckId: selectedDeckId })
           });
-          const newStats = await res.json();
-          setUser(prev => ({ ...prev, stats: newStats }));
-          alert(`Stat Recorded! Total Wins: ${newStats.wins}`);
+          const data = await res.json();
+          setUser(prev => ({ ...prev, stats: data.stats, decks: data.decks }));
+          alert(`Stat Recorded! Total Wins: ${data.stats.wins}`);
       } catch (err) {
           console.error(err);
       }
@@ -933,10 +1009,19 @@ function App() {
       `}</style>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
+      {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
 
-      {!hasJoined && <Lobby onJoin={joinGame} user={user} onOpenAuth={() => setShowAuthModal(true)} />}
+      {!hasJoined && (
+        <Lobby 
+            onJoin={joinGame} 
+            user={user} 
+            onOpenAuth={() => setShowAuthModal(true)} 
+            onOpenProfile={() => setShowProfile(true)}
+            onSelectDeck={setSelectedDeckId}
+            selectedDeckId={selectedDeckId}
+        />
+      )}
 
-      {/* --- WRAP GAME UI IN CONDITION SO IT DOESN'T SHOW IN LOBBY --- */}
       {hasJoined && (
         <>
           <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
