@@ -3,7 +3,8 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; // Your Render Backend URL
+// NOTE: Change this to 'http://localhost:3001' if testing locally!
+const API_URL = 'https://battlemat.onrender.com'; 
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -80,7 +81,7 @@ const AuthModal = ({ onClose, onLogin }) => {
             if (!res.ok) throw new Error(data.msg || "Error");
             
             if (isRegister) {
-                setIsRegister(false); // Switch to login after register
+                setIsRegister(false); 
                 alert("Account created! Please log in.");
             } else {
                 onLogin(data.user, data.token);
@@ -144,7 +145,6 @@ const Lobby = ({ onJoin, user, onOpenAuth }) => {
       <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         
-        {/* --- USER STATS IN LOBBY --- */}
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff'}}>Welcome, {user.username}</div>
@@ -386,7 +386,6 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// --- VIDEO CONTAINER (WITH STATS BUTTONS) ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -483,7 +482,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                                 
-                                {/* --- NEW: STATS BUTTONS --- */}
                                 <div style={{padding: '8px', borderTop: '1px solid #444', display: 'flex', gap: '5px'}}>
                                     <button onClick={() => onRecordStat(true)} style={{flex: 1, background: '#166534', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🏆 WIN</button>
                                     <button onClick={() => onRecordStat(false)} style={{flex: 1, background: '#991b1b', color: 'white', border: 'none', padding: '6px', borderRadius: '4px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>❌ LOSS</button>
@@ -938,33 +936,38 @@ function App() {
 
       {!hasJoined && <Lobby onJoin={joinGame} user={user} onOpenAuth={() => setShowAuthModal(true)} />}
 
-      <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
-      {showHistory && <HistoryModal history={searchHistory} onSelect={handleGlobalCardFound} onClose={() => setShowHistory(false)} />}
-      <div style={{ height: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ height: '30px', background: '#000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #333', zIndex: 200000, flexShrink: 0 }}>
-          <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
-              <div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div>
-              <div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div>
-              {user && <div style={{fontSize: '11px', color: '#888', marginLeft: '10px'}}>Logged in as {user.username}</div>}
+      {/* --- WRAP GAME UI IN CONDITION SO IT DOESN'T SHOW IN LOBBY --- */}
+      {hasJoined && (
+        <>
+          <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
+          {showHistory && <HistoryModal history={searchHistory} onSelect={handleGlobalCardFound} onClose={() => setShowHistory(false)} />}
+          <div style={{ height: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
+            <div style={{ height: '30px', background: '#000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #333', zIndex: 200000, flexShrink: 0 }}>
+              <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}>
+                  <div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div>
+                  <div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div>
+                  {user && <div style={{fontSize: '11px', color: '#888', marginLeft: '10px'}}>Logged in as {user.username}</div>}
+              </div>
+              <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
+                <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
+                {!isSpectator && (
+                    <>
+                    <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
+                    <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
+                    </>
+                )}
+                {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
+              </div>
+            </div>
+            <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
+              {seatOrder.length === 0 ? <div style={{color: '#666'}}>Waiting for players...</div> : seatOrder.map(seatId => (
+                <VideoContainer key={seatId} stream={seatId === myId ? myStream : peers.find(p => p.id === seatId)?.stream} userId={seatId} isMyStream={seatId === myId} myId={myId} playerData={gameState[seatId]} updateGame={handleUpdateGame} width={layout.width} height={layout.height} allPlayerIds={seatOrder} allGameState={gameState} onDragStart={handleDragStart} onDrop={handleDrop} isActiveTurn={turnState.activeId === seatId} onSwitchRatio={switchCameraStream} currentRatio={cameraRatio} onInspectToken={setViewCard} onClaimStatus={handleClaimStatus} onRecordStat={handleRecordStat} />
+              ))}
+            </div>
           </div>
-          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
-          <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-            <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
-            {!isSpectator && (
-                <>
-                <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
-                <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
-                </>
-            )}
-            {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
-          </div>
-        </div>
-        <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
-          {seatOrder.length === 0 ? <div style={{color: '#666'}}>Waiting for players...</div> : seatOrder.map(seatId => (
-            <VideoContainer key={seatId} stream={seatId === myId ? myStream : peers.find(p => p.id === seatId)?.stream} userId={seatId} isMyStream={seatId === myId} myId={myId} playerData={gameState[seatId]} updateGame={handleUpdateGame} width={layout.width} height={layout.height} allPlayerIds={seatOrder} allGameState={gameState} onDragStart={handleDragStart} onDrop={handleDrop} isActiveTurn={turnState.activeId === seatId} onSwitchRatio={switchCameraStream} currentRatio={cameraRatio} onInspectToken={setViewCard} onClaimStatus={handleClaimStatus} onRecordStat={handleRecordStat} />
-          ))}
-        </div>
-      </div>
+        </>
+      )}
     </>
   );
 }
