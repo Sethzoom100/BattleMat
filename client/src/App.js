@@ -283,7 +283,7 @@ function App() {
   const [myStream, setMyStream] = useState(null);
   const [myId, setMyId] = useState(null);
   const [peers, setPeers] = useState([]); 
-  const peersRef = useRef({}); // SAFETY REF FOR CLEANUP
+  const peersRef = useRef({}); 
   const [gameState, setGameState] = useState({});
   const streamRef = useRef(null);
   const peerRef = useRef(null);
@@ -295,6 +295,16 @@ function App() {
   const [cameraRatio, setCameraRatio] = useState('16:9'); 
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
+
+  // --- REFS FOR SYNCING ---
+  const gameStateRef = useRef({});
+  const seatOrderRef = useRef([]);
+  const turnStateRef = useRef({ activeId: null, count: 1 });
+
+  // Update Refs whenever state changes
+  useEffect(() => { gameStateRef.current = gameState; }, [gameState]);
+  useEffect(() => { seatOrderRef.current = seatOrder; }, [seatOrder]);
+  useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
@@ -486,16 +496,15 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
+  // --- REORDERED INITIALIZATION LOGIC ---
   useEffect(() => {
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
 
-    // 1. GET CAMERA
     navigator.mediaDevices.getUserMedia({ video: constraints, audio: true })
       .then(stream => { 
           setMyStream(stream); 
           streamRef.current = stream; 
           
-          // 2. SETUP PEER
           const myPeer = new Peer(undefined, { config: { iceServers: [{ urls: 'stun:stun.l.google.com:19302' }] } });
           peerRef.current = myPeer;
 
@@ -503,7 +512,6 @@ function App() {
             setMyId(id);
             setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
-            // 3. JOIN ROOM AFTER CAMERA IS READY
             socket.emit('join-room', ROOM_ID, id);
           });
 
@@ -514,14 +522,25 @@ function App() {
       })
       .catch(() => console.error("Camera Error"));
 
+    // --- SYNC LOGIC (The Magic) ---
     socket.on('user-connected', userId => { 
         if (!peerRef.current || !streamRef.current) return;
         const call = peerRef.current.call(userId, streamRef.current); 
         call.on('stream', s => addPeer(userId, s, call)); 
+        
+        // 1. Send MY current state to the new user
+        if (myId && gameStateRef.current[myId]) {
+            socket.emit('update-game-state', { userId: myId, data: gameStateRef.current[myId] });
+        }
+        
+        // 2. Broadcast the current Turn info (anyone can do this, redundancy is fine)
+        socket.emit('update-turn-state', turnStateRef.current);
+
+        // 3. Broadcast Seat Order so they see everyone in the right spot
+        socket.emit('update-seat-order', seatOrderRef.current);
     });
 
     socket.on('user-disconnected', disconnectedId => {
-      // CLOSE THE CALL TO STOP FROZEN VIDEO
       if (peersRef.current[disconnectedId]) {
           peersRef.current[disconnectedId].close();
           delete peersRef.current[disconnectedId];
@@ -542,12 +561,10 @@ function App() {
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [myId]); // Added myId to dep array to ensure sync uses correct ID
 
   function addPeer(id, stream, call) {
-    // SAVE CALL OBJECT FOR CLEANUP
     if (call) peersRef.current[id] = call;
-    
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
