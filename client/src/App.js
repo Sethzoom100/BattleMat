@@ -513,6 +513,9 @@ function App() {
             setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
             socket.emit('join-room', ROOM_ID, id);
+            
+            // --- SYNC REQUEST (Trigger immediate sync) ---
+            socket.emit('sync-request');
           });
 
           myPeer.on('call', call => { 
@@ -523,26 +526,25 @@ function App() {
       .catch(() => console.error("Camera Error"));
 
     socket.on('user-connected', userId => { 
-        // 1. SYNC STATE IMMEDIATELY (Don't wait for video)
-        // Check if we know who we are and have state to share
-        if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
-            socket.emit('update-game-state', {
-                userId: myIdRef.current,
-                data: gameStateRef.current[myIdRef.current]
-            });
-        }
-        socket.emit('update-turn-state', turnStateRef.current);
+        if (!peerRef.current || !streamRef.current) return;
+        const call = peerRef.current.call(userId, streamRef.current); 
+        call.on('stream', s => addPeer(userId, s, call)); 
         
         // Seat Order Sync logic
         const currentOrder = seatOrderRef.current;
         const newOrder = currentOrder.includes(userId) ? currentOrder : [...currentOrder, userId];
         socket.emit('update-seat-order', newOrder);
         setSeatOrder(newOrder); 
+    });
 
-        // 2. NOW HANDLE VIDEO
-        if (!peerRef.current || !streamRef.current) return;
-        const call = peerRef.current.call(userId, streamRef.current); 
-        call.on('stream', s => addPeer(userId, s, call)); 
+    // --- NEW SYNC LISTENER ---
+    socket.on('sync-requested', () => {
+        if (myIdRef.current && gameStateRef.current[myIdRef.current]) {
+            socket.emit('update-game-state', {
+                userId: myIdRef.current,
+                data: gameStateRef.current[myIdRef.current]
+            });
+        }
     });
 
     socket.on('user-disconnected', disconnectedId => {
