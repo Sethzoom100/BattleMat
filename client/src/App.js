@@ -108,20 +108,16 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- PROFILE SCREEN (UPDATED: COMMANDER + PARTNER FIELDS) ---
+// --- PROFILE SCREEN ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
-    // No more deckName state
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
-    
-    // Autocomplete Logic
     const [suggestions, setSuggestions] = useState([]);
-    const [activeInput, setActiveInput] = useState(null); // 'commander' or 'partner'
+    const [activeInput, setActiveInput] = useState(null); 
 
     const handleSearch = async (val, field) => {
         if (field === 'commander') setCmdrName(val);
         else setPartnerName(val);
-        
         setActiveInput(field);
         if (val.length > 2) setSuggestions(await fetchCommanderAutocomplete(val));
         else setSuggestions([]);
@@ -135,13 +131,9 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     };
 
     const handleAddDeck = async () => {
-        if (!cmdrName) return; // Only Commander is mandatory
-        
-        // 1. Fetch Art (Use Commander's art)
+        if (!cmdrName) return; 
         const cardData = await fetchCardData(cmdrName);
         const image = cardData ? (cardData.artCrop || cardData.image) : "";
-        
-        // 2. Auto-generate Name: "Commander" OR "Commander + Partner"
         const deckName = partnerName ? `${cmdrName} + ${partnerName}` : cmdrName;
 
         try {
@@ -201,10 +193,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
 
             <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
             
-            {/* UPDATED: Add Deck Form */}
             <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444', flexWrap: 'wrap'}}>
-                
-                {/* Commander Input */}
                 <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
                     <input type="text" placeholder="Commander (Required)" value={cmdrName} onChange={e => handleSearch(e.target.value, 'commander')} style={{...inputStyle, width: '100%'}} />
                     {suggestions.length > 0 && activeInput === 'commander' && (
@@ -213,8 +202,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                         </div>
                     )}
                 </div>
-
-                {/* Partner Input */}
                 <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
                     <input type="text" placeholder="Partner (Optional)" value={partnerName} onChange={e => handleSearch(e.target.value, 'partner')} style={{...inputStyle, width: '100%'}} />
                     {suggestions.length > 0 && activeInput === 'partner' && (
@@ -223,18 +210,13 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                         </div>
                     )}
                 </div>
-
                 <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>+ Create Deck</button>
             </div>
 
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {user.decks && user.decks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        <div style={{
-                            height: '180px', 
-                            background: `url(${deck.image}) center 20% / 120% no-repeat`,
-                            borderBottom: '1px solid #333'
-                        }}></div>
+                        <div style={{ height: '180px', background: `url(${deck.image}) center 20% / 120% no-repeat`, borderBottom: '1px solid #333' }}></div>
                         <div style={{padding: '15px'}}>
                             <div style={{fontWeight: 'bold', fontSize: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}} title={deck.name}>{deck.name}</div>
                             <div style={{fontSize: '13px', marginTop: '5px'}}>Win Rate: {deck.wins + deck.losses > 0 ? Math.round((deck.wins / (deck.wins+deck.losses))*100) : 0}%</div>
@@ -248,12 +230,13 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY ---
+// --- LOBBY (UPDATED WITH SECRET COMMANDER) ---
 const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [previewStream, setPreviewStream] = useState(null);
+  const [hideCommander, setHideCommander] = useState(false); // NEW STATE
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -278,7 +261,22 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, selectedDeviceId]);
 
-  const handleEnterGame = () => { onJoin(false, previewStream); };
+  // Pass hideCommander status to onJoin
+  const handleEnterGame = async () => { 
+      // Fetch deck data if deck selected
+      let deckData = null;
+      if (user && user.decks && selectedDeckId) {
+          const selected = user.decks.find(d => d._id === selectedDeckId);
+          if (selected) {
+              const names = selected.name.split(' + ');
+              const primary = await fetchCardData(names[0]);
+              const partner = names.length > 1 ? await fetchCardData(names[1]) : null;
+              deckData = { primary, partner };
+          }
+      }
+      onJoin(false, previewStream, deckData, hideCommander); 
+  };
+  
   const handleSpectate = () => { if (previewStream) previewStream.getTracks().forEach(t => t.stop()); onJoin(true, null); };
 
   if (step === 'mode') {
@@ -311,14 +309,27 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        {/* --- DECK SELECTOR --- */}
+        
+        {/* --- DECK SELECTOR + HIDE TOGGLE --- */}
         {user && user.decks && user.decks.length > 0 && (
             <div>
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
-                <select value={selectedDeckId} onChange={e => onSelectDeck(e.target.value)} style={{width: '100%', padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none', marginTop: '5px'}}>
-                    <option value="">-- No Deck (Stats to Global only) --</option>
-                    {user.decks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
-                </select>
+                <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
+                    <select value={selectedDeckId} onChange={e => onSelectDeck(e.target.value)} style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}>
+                        <option value="">-- No Deck --</option>
+                        {user.decks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                    </select>
+                    <button 
+                        onClick={() => setHideCommander(!hideCommander)} 
+                        title="Hide Commander from opponents until you reveal it"
+                        style={{
+                            background: hideCommander ? '#ef4444' : '#333', 
+                            border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px'
+                        }}
+                    >
+                        {hideCommander ? '🙈' : '👁️'}
+                    </button>
+                </div>
             </div>
         )}
 
@@ -497,13 +508,21 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
-const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave }) => {
+// --- UPDATED: COMMANDER LABEL WITH REVEAL LOGIC ---
+const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
   useEffect(() => { setQuery(cardData ? cardData.name : ""); }, [cardData]);
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchCommanderAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = (name) => { setQuery(name); setShowDropdown(false); onSelect(name); };
+  
+  // --- NEW: SECRET COMMANDER LOGIC ---
+  if (secretData) {
+      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic'}}>🙈 Hidden</span>;
+  }
+
   if (!isMyStream && cardData) return <span onMouseEnter={() => onHover(cardData)} onMouseLeave={onLeave} style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666' }}>{cardData.name}</span>;
   if (isMyStream) return (
       <div style={{ position: 'relative', display: 'inline-block' }}>
@@ -671,8 +690,23 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
                 <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
-                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} />
-                {(isMyStream || playerData?.commanders?.partner) && <><span style={{color: '#666'}}>|</span><CommanderLabel placeholder="Partner" cardData={playerData?.commanders?.partner} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'partner')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} /></>}
+                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => handleSelectCommander(n, 'primary')} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} secretData={playerData?.secretCommanders?.primary} onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })} />
+                {/* Partner Logic Updated for Secret Mode */}
+                {(isMyStream || playerData?.commanders?.partner || playerData?.secretCommanders?.partner) && (
+                    <>
+                        <span style={{color: '#666'}}>|</span>
+                        <CommanderLabel 
+                            placeholder="Partner" 
+                            cardData={playerData?.commanders?.partner} 
+                            isMyStream={isMyStream} 
+                            onSelect={(n) => handleSelectCommander(n, 'partner')} 
+                            onHover={setHoveredCard} 
+                            onLeave={() => setHoveredCard(null)}
+                            secretData={playerData?.secretCommanders?.partner}
+                            onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })}
+                        />
+                    </>
+                )}
                 </div>
                 <div style={{position: 'relative', zIndex: 10}}><button onClick={() => setShowDamagePanel(!showDamagePanel)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}><span style={{color: '#ef4444'}}>🛡</span> Damage</button></div>
             </div>
@@ -961,7 +995,8 @@ function App() {
     return () => clearInterval(interval);
   }, [isSpectator]);
 
-  const joinGame = (spectatorMode, existingStream = null) => {
+  // --- JOIN GAME: HANDLES DECK FETCH & SECRET COMMANDER ---
+  const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
     setIsSpectator(spectatorMode);
     const constraints = { width: { ideal: 1280 }, height: { ideal: 720 }, aspectRatio: 1.777777778 };
@@ -971,16 +1006,33 @@ function App() {
         peerRef.current = myPeer;
         myPeer.on('open', id => {
           setMyId(id);
-          setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' } }));
+          
+          // CONSTRUCT INITIAL STATE
+          const initialData = { 
+              life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9',
+              commanders: {}, 
+              secretCommanders: null 
+          };
+
+          // IF DECK SELECTED:
+          if (deckData) {
+              if (isSecret) {
+                  initialData.secretCommanders = deckData; // Save secretly
+              } else {
+                  initialData.commanders = deckData; // Show publicly
+              }
+          }
+
+          setGameState(prev => ({ ...prev, [id]: initialData }));
+          
           if (!spectatorMode) {
               setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
           }
+          
           socket.emit('join-room', ROOM_ID, id, spectatorMode);
+          
           if (!spectatorMode) {
-              socket.emit('update-game-state', {
-                  userId: id,
-                  data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' }
-              });
+              socket.emit('update-game-state', { userId: id, data: initialData });
           }
         });
         myPeer.on('call', call => { 
