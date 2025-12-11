@@ -108,7 +108,10 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        width: '12%', minWidth: '50px', 
+        // 10% WIDTH (Approx 85px on standard screens)
+        width: '10%', 
+        minWidth: '45px', 
+        
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -162,7 +165,7 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
-// --- UPDATED HEADER SEARCH BAR (GRID HISTORY) ---
+// --- UPDATED: FULL SCREEN HISTORY GRID ---
 const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -181,23 +184,37 @@ const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
       <div style={{position: 'relative'}}>
         <button onClick={() => { setShowHistory(!showHistory); setShowDropdown(false); }} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
         {showHistory && (
-          <div style={{ 
-            position: 'absolute', top: '100%', right: 0, width: '380px', marginTop: '5px', 
-            background: '#1a1a1a', border: '1px solid #444', zIndex: 100002,
-            display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '6px', padding: '8px',
-            borderRadius: '4px', boxShadow: '0 10px 30px rgba(0,0,0,0.9)'
-          }}>
-             {searchHistory.map((card, i) => (
-               <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ cursor: 'pointer' }}>
-                  <img 
-                    src={card.image} 
-                    alt={card.name} 
-                    style={{ width: '100%', borderRadius: '4px', transition: 'transform 0.1s', border: '1px solid #444' }} 
-                    onMouseEnter={(e) => e.target.style.transform = 'scale(1.15)'}
-                    onMouseLeave={(e) => e.target.style.transform = 'scale(1)'}
-                  />
-               </div>
-             ))}
+          // --- FULL SCREEN OVERLAY ---
+          <div 
+            onClick={() => setShowHistory(false)}
+            style={{ 
+                position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
+                background: 'rgba(0,0,0,0.85)', zIndex: 200000,
+                display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
+                backdropFilter: 'blur(5px)'
+            }}
+          >
+             <div style={{color: '#999', marginBottom: '20px', fontSize: '20px', letterSpacing: '2px', fontWeight: 'bold'}}>SEARCH HISTORY</div>
+             <div 
+                onClick={(e) => e.stopPropagation()} 
+                style={{ 
+                    display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '20px', 
+                    maxWidth: '1200px', width: '90%', padding: '20px'
+                }}
+             >
+                 {searchHistory.length === 0 && <div style={{color: '#666', gridColumn: 'span 6', textAlign: 'center'}}>No history yet.</div>}
+                 {searchHistory.map((card, i) => (
+                   <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ cursor: 'pointer', position: 'relative' }}>
+                      <img 
+                        src={card.image} 
+                        alt={card.name} 
+                        style={{ width: '100%', borderRadius: '10px', transition: 'transform 0.15s ease', border: '1px solid #444', boxShadow: '0 5px 15px black' }} 
+                        onMouseEnter={(e) => { e.target.style.transform = 'scale(1.2)'; e.target.style.zIndex = '100'; }}
+                        onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; e.target.style.zIndex = '1'; }}
+                      />
+                   </div>
+                 ))}
+             </div>
           </div>
         )}
       </div>
@@ -636,14 +653,14 @@ function App() {
 
           myPeer.on('open', id => {
             setMyId(id);
-            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' } }));
+            setGameState(prev => ({ ...prev, [id]: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] } }));
             setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
             socket.emit('join-room', ROOM_ID, id);
             
             // --- SYNC FIX: SEND OWN STATE TO SERVER MEMORY ON JOIN ---
             socket.emit('update-game-state', {
                 userId: id,
-                data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9' }
+                data: { life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [] }
             });
           });
 
