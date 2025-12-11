@@ -44,6 +44,8 @@ const fetchCommanderAutocomplete = async (text) => {
 };
 
 // --- COMPONENTS ---
+
+// 1. DICE OVERLAY
 const DiceOverlay = ({ activeRoll }) => {
   if (!activeRoll) return null;
   return (
@@ -57,6 +59,7 @@ const DiceOverlay = ({ activeRoll }) => {
   );
 };
 
+// 2. DRAGGABLE TOKEN
 const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
   const [isDragging, setIsDragging] = useState(false);
   const [pos, setPos] = useState({ x: token.x, y: token.y });
@@ -108,10 +111,8 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
     <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
       style={{ 
         position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, 
-        // 10% WIDTH (~85px)
-        width: '10%', 
-        minWidth: '45px', 
-        
+        // 10% WIDTH (Approx 85px)
+        width: '10%', minWidth: '45px', 
         zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', 
         transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`,
         transition: isDragging ? 'none' : 'transform 0.2s' 
@@ -122,6 +123,7 @@ const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOp
   );
 };
 
+// 3. TOKEN CONTEXT MENU
 const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
     <>
         <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
@@ -132,6 +134,7 @@ const TokenContextMenu = ({ x, y, onDelete, onInspect, onClose }) => (
     </>
 );
 
+// 4. TOKEN SEARCH BAR
 const TokenSearchBar = ({ onSelect }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -150,6 +153,7 @@ const TokenSearchBar = ({ onSelect }) => {
   );
 };
 
+// 5. BIG LIFE COUNTER
 const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(life);
@@ -165,12 +169,11 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   );
 };
 
-// --- UPDATED: FULL SCREEN CENTERED HISTORY ---
-const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
+// 6. HEADER SEARCH BAR
+const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
   const [showDropdown, setShowDropdown] = useState(false);
-  const [showHistory, setShowHistory] = useState(false);
   
   const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
   const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
@@ -178,50 +181,52 @@ const HeaderSearchBar = ({ onCardFound, searchHistory }) => {
   return (
     <div style={{ position: 'relative', width: '290px', zIndex: 9000, display: 'flex', gap: '5px' }}>
       <div style={{flex: 1, position: 'relative'}}>
-        <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { setShowHistory(false); if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
+        <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
         {showDropdown && suggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1a1a1a', border: '1px solid #444', maxHeight: '400px', overflowY: 'auto', zIndex: 100001, boxShadow: '0 10px 40px rgba(0,0,0,0.9)' }}>{suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{name}</div>)}</div>}
       </div>
-      <div style={{position: 'relative'}}>
-        <button onClick={() => { setShowHistory(!showHistory); setShowDropdown(false); }} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
-        {showHistory && (
-          // --- FULL SCREEN CENTERED OVERLAY ---
-          <div 
-            onClick={() => setShowHistory(false)}
+      <button onClick={onToggleHistory} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
+    </div>
+  );
+};
+
+// 7. NEW: FULL SCREEN HISTORY MODAL
+const HistoryModal = ({ history, onSelect, onClose }) => {
+    return (
+        <div 
+            onClick={onClose}
             style={{ 
                 position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh',
                 background: 'rgba(0,0,0,0.9)', zIndex: 200000,
                 display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center',
                 backdropFilter: 'blur(8px)'
             }}
-          >
-             <div style={{color: '#999', marginBottom: '20px', fontSize: '20px', letterSpacing: '2px', fontWeight: 'bold'}}>SEARCH HISTORY</div>
-             <div 
+        >
+            <div style={{color: '#999', marginBottom: '20px', fontSize: '20px', letterSpacing: '2px', fontWeight: 'bold'}}>SEARCH HISTORY</div>
+            <div 
                 onClick={(e) => e.stopPropagation()} 
                 style={{ 
                     display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '15px', 
                     maxWidth: '1200px', width: '90%', padding: '20px'
                 }}
-             >
-                 {searchHistory.length === 0 && <div style={{color: '#666', gridColumn: 'span 6', textAlign: 'center'}}>No history yet.</div>}
-                 {searchHistory.map((card, i) => (
-                   <div key={i} onClick={() => { setShowHistory(false); onCardFound(card); }} style={{ cursor: 'pointer', position: 'relative' }}>
-                      <img 
-                        src={card.image} 
-                        alt={card.name} 
-                        style={{ width: '100%', borderRadius: '8px', transition: 'transform 0.15s ease', border: '1px solid #444', boxShadow: '0 5px 15px black' }} 
-                        onMouseEnter={(e) => { e.target.style.transform = 'scale(1.2)'; e.target.style.zIndex = '100'; }}
-                        onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; e.target.style.zIndex = '1'; }}
-                      />
-                   </div>
-                 ))}
-             </div>
-          </div>
-        )}
-      </div>
-    </div>
-  );
+            >
+                {history.length === 0 && <div style={{color: '#666', gridColumn: 'span 6', textAlign: 'center'}}>No history yet.</div>}
+                {history.map((card, i) => (
+                    <div key={i} onClick={() => { onSelect(card); onClose(); }} style={{ cursor: 'pointer', position: 'relative' }}>
+                        <img 
+                            src={card.image} 
+                            alt={card.name} 
+                            style={{ width: '100%', borderRadius: '8px', transition: 'transform 0.15s ease', border: '1px solid #444', boxShadow: '0 5px 15px black' }} 
+                            onMouseEnter={(e) => { e.target.style.transform = 'scale(1.2)'; e.target.style.zIndex = '100'; }}
+                            onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; e.target.style.zIndex = '1'; }}
+                        />
+                    </div>
+                ))}
+            </div>
+        </div>
+    );
 };
 
+// 8. CARD MODAL
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
@@ -234,6 +239,7 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
+// 9. COMMANDER LABEL
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave }) => {
   const [query, setQuery] = useState("");
   const [suggestions, setSuggestions] = useState([]);
@@ -251,6 +257,7 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
+// 10. DAMAGE PANEL
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
   const poison = targetPlayerData?.poison || 0;
   const cmdDamageTaken = targetPlayerData?.cmdDamageTaken || {};
@@ -277,6 +284,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
+// 11. VIDEO CONTAINER
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -314,14 +322,10 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   const life = playerData?.life ?? 40;
   const isDead = life <= 0 || (playerData?.poison || 0) >= 10;
 
-  // --- CRITICAL FIX: EXACT ASPECT RATIO CALCULATION (THE STAGE) ---
+  // STRICT STAGE ASPECT RATIO
   const TARGET_RATIO = 1.777777778; // 16:9
-  
-  // Calculate max dimensions that fit inside the container
   let finalW = width;
   let finalH = width / TARGET_RATIO;
-
-  // If too tall, scale down based on height
   if (finalH > height) {
       finalH = height;
       finalW = height * TARGET_RATIO;
@@ -329,24 +333,10 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
 
   return (
     <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
-      
-      {/* OUTER WRAPPER: Centers the Stage */}
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
-        
-        {/* --- THE STAGE: EXACT DIMENSIONS --- */}
-        {/* Everything (video, tokens, overlay) lives inside this strictly sized box. */}
-        <div style={{ 
-            width: finalW, 
-            height: finalH, 
-            position: 'relative',
-            overflow: 'hidden'
-        }}>
-            
+        <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
-            
-            {/* VIDEO: FORCE FILL (No gaps allowed) */}
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
-            
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             {hoveredCardImage && <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)' }}><img src={hoveredCardImage} alt="Card" style={{width: '240px', borderRadius: '10px'}} /></div>}
             <DiceOverlay activeRoll={playerData?.activeRoll} />
@@ -361,7 +351,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                         {isMyStream && (
                             <>
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
                                     <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
@@ -378,7 +367,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                     </div>
                                     <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
                                 </div>
-
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
                                     <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
                                     <TokenSearchBar onSelect={handleAddToken} />
@@ -423,8 +411,8 @@ function App() {
   const [cameraRatio, setCameraRatio] = useState('16:9'); 
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
+  const [showHistory, setShowHistory] = useState(false); // LIFTED STATE FOR HISTORY
 
-  // REFS FOR SYNC AND STATE TRACKING
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
   const turnStateRef = useRef({ activeId: null, count: 1 });
@@ -461,7 +449,6 @@ function App() {
 
   const handleGlobalCardFound = (cardData) => {
     setViewCard(cardData);
-    // --- UPDATED: KEEP 12 CARDS FOR THE 2x6 GRID ---
     setSearchHistory(prev => [cardData, ...prev.filter(c => c.name !== cardData.name)].slice(0, 12));
   };
 
@@ -747,10 +734,11 @@ function App() {
         @keyframes popIn { 0% { transform: scale(0); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
       `}</style>
       <CardModal cardData={viewCard} onClose={() => setViewCard(null)} />
+      {showHistory && <HistoryModal history={searchHistory} onSelect={handleGlobalCardFound} onClose={() => setShowHistory(false)} />}
       <div style={{ height: '100vh', width: '100vw', color: 'white', fontFamily: 'Segoe UI, sans-serif', display: 'flex', flexDirection: 'column' }}>
         <div style={{ height: '30px', background: '#000', display: 'flex', justifyContent: 'space-between', alignItems: 'center', padding: '0 15px', borderBottom: '1px solid #333', zIndex: 200000, flexShrink: 0 }}>
           <div style={{display: 'flex', alignItems: 'center', gap: '15px'}}><div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div><div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div></div>
-          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} searchHistory={searchHistory} /></div>
+          <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
           <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
             <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
             <button onClick={resetGame} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>⚠️ RESET</button>
