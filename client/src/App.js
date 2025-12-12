@@ -93,8 +93,10 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
+                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
+                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -146,8 +148,9 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
     
-    // Random State
-    const [useCycle, setUseCycle] = useState(false);
+    // --- UPDATED: LOAD CYCLE PREFERENCE FROM STORAGE ---
+    const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
+    
     const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
     const [resetCycle, setResetCycle] = useState(false);
 
@@ -220,7 +223,16 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
                              <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                              <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                <input type="checkbox" checked={useCycle} onChange={e => setUseCycle(e.target.checked)} id="cycleCheckModal" style={{cursor:'pointer'}} />
+                                <input 
+                                    type="checkbox" 
+                                    checked={useCycle} 
+                                    onChange={e => {
+                                        setUseCycle(e.target.checked);
+                                        localStorage.setItem('battlemat_use_cycle', e.target.checked);
+                                    }} 
+                                    id="cycleCheckModal" 
+                                    style={{cursor:'pointer'}} 
+                                />
                                 <label htmlFor="cycleCheckModal" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
                              </div>
                         </div>
@@ -382,8 +394,9 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
   const [previewStream, setPreviewStream] = useState(null);
   const [hideCommander, setHideCommander] = useState(false); 
   
-  // Random State
-  const [useCycle, setUseCycle] = useState(false);
+  // --- UPDATED: LOAD CYCLE PREFERENCE FROM STORAGE ---
+  const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
+  
   const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
   const [resetCycle, setResetCycle] = useState(false);
 
@@ -519,7 +532,16 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                 <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
                         <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                         <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                        <input type="checkbox" checked={useCycle} onChange={e => setUseCycle(e.target.checked)} id="cycleCheckLobby" style={{cursor:'pointer'}} />
+                        <input 
+                            type="checkbox" 
+                            checked={useCycle} 
+                            onChange={e => {
+                                setUseCycle(e.target.checked);
+                                localStorage.setItem('battlemat_use_cycle', e.target.checked);
+                            }} 
+                            id="cycleCheckLobby" 
+                            style={{cursor:'pointer'}} 
+                        />
                         <label htmlFor="cycleCheckLobby" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
                         </div>
                 </div>
@@ -729,8 +751,8 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   // Logic simplified: No inputs, just display.
   
   if (secretData) {
-      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
-      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
+      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic'}}>🙈 Hidden</span>;
   }
 
   if (cardData) {
@@ -738,14 +760,14 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
         <span 
             onMouseEnter={() => onHover(cardData)} 
             onMouseLeave={onLeave} 
-            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold', fontSize: '10px' }}
+            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold' }}
         >
             {cardData.name}
         </span>
       );
   }
 
-  return <span style={{color: '#777', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
+  return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
@@ -881,6 +903,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
+                                
+                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
@@ -1073,27 +1097,17 @@ function App() {
   const handleLeaveGame = () => {
       if(!window.confirm("Leave current game?")) return;
       
-      // 1. Stop all tracks in the local stream
-      if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
+      if(streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
       }
       
-      // 2. Destroy the PeerJS connection
-      if (peerRef.current) {
+      if(peerRef.current) {
           peerRef.current.destroy();
       }
       
-      // 3. Clear all connection-related state and refs
-      setMyStream(null);
-      streamRef.current = null;
-      setPeers([]);
-      peersRef.current = {};
-      
-      // 4. Force disconnect socket to notify server, then reconnect for lobby
       socket.disconnect();
       socket.connect();
       
-      // 5. Reset UI state
       setHasJoined(false);
       setGameState({});
       setSeatOrder([]);
@@ -1426,11 +1440,6 @@ function App() {
         }
     });
 
-    // --- HOST UPDATE HANDLER ---
-    socket.on('host-update', (newHostId) => {
-        setHostId(newHostId);
-    });
-
     socket.on('full-state-sync', (allData) => { if(allData) setGameState(prev => ({ ...prev, ...allData })); });
 
     socket.on('user-disconnected', disconnectedId => {
@@ -1491,9 +1500,6 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
-
-  // --- IS HOST? ---
-  const isHost = myId === hostId;
 
   return (
     <>
