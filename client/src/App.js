@@ -93,10 +93,8 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
-                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -232,7 +230,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                        onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                         setWasRandomlyPicked(false);
@@ -260,7 +258,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
     );
 };
 
-// --- PROFILE SCREEN (UPDATED: NO LOGOUT BUTTON HERE) ---
+// --- PROFILE SCREEN ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
@@ -334,7 +332,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
-            
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -1497,7 +1494,12 @@ function App() {
                     <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
                     </>
                 )}
-                {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
+                {isSpectator && (
+                    <>
+                      <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>
+                      <button onClick={handleLeaveGame} style={{background: '#333', border: '1px solid #555', color: '#fca5a5', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🚪 Leave</button>
+                    </>
+                )}
               </div>
             </div>
             <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
