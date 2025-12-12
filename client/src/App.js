@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
+const API_URL = 'https://battlemat.onrender.com'; 
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -133,7 +133,7 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
     );
 };
 
-// --- DECK SELECTION MODAL (Sorted & Add Option) ---
+// --- DECK SELECTION MODAL ---
 const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
@@ -157,7 +157,6 @@ const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
         onConfirm(deckData, hideCommander, selectedDeckId);
     };
 
-    // Sort decks alphabetically for the modal
     const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
 
     return (
@@ -173,7 +172,7 @@ const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // Open profile directly
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                     }
@@ -313,7 +312,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED WITH SORT & ADD OPTION) ---
+// --- LOBBY ---
 const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -655,6 +654,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
 
   useEffect(() => { if (videoRef.current && stream) videoRef.current.srcObject = stream; }, [stream]);
 
+  const handleSelectCommander = async (name, type) => { const cardData = await fetchCardData(name); if (cardData) updateGame(myId, { commanders: { ...playerData?.commanders, [type]: cardData } }); };
   const handleAddToken = async (tokenName) => { if(!tokenName) return; const cardData = await fetchCardData(tokenName); if (cardData) { updateGame(myId, { tokens: [...(playerData?.tokens || []), { id: Date.now(), name: cardData.name, image: cardData.image, x: 50, y: 50, isTapped: false }] }); setShowSettings(false); } };
   const handleUpdateToken = (updatedToken) => { updateGame(myId, { tokens: (playerData?.tokens || []).map(t => t.id === updatedToken.id ? updatedToken : t) }); };
   const handleRemoveToken = (tokenId) => { updateGame(myId, { tokens: (playerData?.tokens || []).filter(t => t.id !== tokenId) }); };
