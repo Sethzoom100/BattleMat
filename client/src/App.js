@@ -88,8 +88,18 @@ const AuthModal = ({ onClose, onLogin }) => {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg);
-            if (isRegister) { setIsRegister(false); alert("Account created! Log in."); }
-            else { onLogin(data.user, data.token); onClose(); }
+            
+            if (isRegister) { 
+                setIsRegister(false); 
+                alert("Account created! Log in."); 
+            } else { 
+                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
+                localStorage.setItem('battlemat_token', data.token);
+                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
+                
+                onLogin(data.user, data.token); 
+                onClose(); 
+            }
         } catch (err) { alert(err.message); }
     };
 
@@ -251,7 +261,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
 };
 
 // --- PROFILE SCREEN ---
-const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
+const ProfileScreen = ({ user, token, onClose, onUpdateUser, onLogout }) => {
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
     const [suggestions, setSuggestions] = useState([]);
@@ -324,6 +334,10 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
+            
+            {/* LOGOUT BUTTON */}
+            <button onClick={onLogout} style={{position:'absolute', top: '20px', right: '130px', fontSize: '14px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '5px 10px', borderRadius: '4px'}}>🚪 Logout</button>
+
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -1425,7 +1439,7 @@ function App() {
       `}</style>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
-      {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
+      {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} onLogout={handleLogout} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
       
       {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
