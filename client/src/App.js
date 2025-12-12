@@ -178,12 +178,13 @@ const DeckSelectionModal = ({ user, onConfirm }) => {
     );
 };
 
-// --- PROFILE SCREEN ---
+// --- PROFILE SCREEN (UPDATED SORTING) ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
     const [suggestions, setSuggestions] = useState([]);
     const [activeInput, setActiveInput] = useState(null); 
+    const [sortMethod, setSortMethod] = useState("name"); // "name" or "winrate"
 
     const handleSearch = async (val, field) => {
         if (field === 'commander') setCmdrName(val); else setPartnerName(val);
@@ -237,6 +238,17 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         } catch (err) { console.error(err); }
     };
 
+    // --- SORTING LOGIC ---
+    const sortedDecks = [...(user.decks || [])].sort((a, b) => {
+        if (sortMethod === 'name') return a.name.localeCompare(b.name);
+        if (sortMethod === 'winrate') {
+            const rateA = (a.wins + a.losses) > 0 ? (a.wins / (a.wins + a.losses)) : 0;
+            const rateB = (b.wins + b.losses) > 0 ? (b.wins / (b.wins + b.losses)) : 0;
+            return rateB - rateA; // Descending
+        }
+        return 0;
+    });
+
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
@@ -248,7 +260,16 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 <div style={statBoxStyle}><h3>📊 Win Rate</h3><span>{user.stats.gamesPlayed > 0 ? Math.round((user.stats.wins / user.stats.gamesPlayed)*100) : 0}%</span></div>
             </div>
             <div style={{marginBottom: '40px'}}><button onClick={handleResetStats} style={{background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold'}}>⚠️ Reset Global Stats</button></div>
-            <h2 style={{color: '#ccc', marginBottom: '15px'}}>My Decks</h2>
+            
+            {/* Sort Controls */}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
+                <h2 style={{color: '#ccc', margin: 0}}>My Decks</h2>
+                <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value)} style={{padding: '5px', background: '#333', color: 'white', border: '1px solid #555', borderRadius: '4px', outline: 'none'}}>
+                    <option value="name">Sort by Name (A-Z)</option>
+                    <option value="winrate">Sort by Win Rate (%)</option>
+                </select>
+            </div>
+
             <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444', flexWrap: 'wrap'}}>
                 <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
                     <input type="text" placeholder="Commander (Required)" value={cmdrName} onChange={e => handleSearch(e.target.value, 'commander')} style={{...inputStyle, width: '100%'}} />
@@ -260,8 +281,10 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 </div>
                 <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>+ Create Deck</button>
             </div>
+            
+            {/* Sorted Deck List */}
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
-                {user.decks && user.decks.map(deck => (
+                {sortedDecks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
                         <div style={{ height: '180px', background: `url(${deck.image}) center 20% / 120% no-repeat`, borderBottom: '1px solid #333' }}></div>
                         <div style={{padding: '15px'}}>
