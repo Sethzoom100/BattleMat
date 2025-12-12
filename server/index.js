@@ -1,4 +1,5 @@
 require('dotenv').config();
+const path = require('path');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const express = require('express');
@@ -35,7 +36,6 @@ if (MONGO_URI) {
 
 // --- ROUTES ---
 
-// NEW: Get User Data (For refreshing stats)
 app.get('/user/:id', async (req, res) => {
     try {
         const user = await User.findById(req.params.id);
@@ -121,7 +121,6 @@ app.post('/update-stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- UPDATED: FINISH GAME ROUTE ---
 app.post('/finish-game', async (req, res) => {
     try {
         const { results } = req.body; 
@@ -133,28 +132,25 @@ app.post('/finish-game', async (req, res) => {
             const user = await User.findById(player.userId);
             if (!user) return;
 
-            // Global Stats
             user.stats.gamesPlayed = (user.stats.gamesPlayed || 0) + 1;
             if (player.result === 'win') user.stats.wins = (user.stats.wins || 0) + 1;
             if (player.result === 'loss') user.stats.losses = (user.stats.losses || 0) + 1;
 
-            // Deck Stats
             if (player.deckId) {
-                const deck = user.decks.find(d => d._id.toString() === player.deckId);
-                if (deck) {
-                    if (player.result === 'win') deck.wins = (deck.wins || 0) + 1;
-                    if (player.result === 'loss') deck.losses = (deck.losses || 0) + 1;
+                const deckIndex = user.decks.findIndex(d => d._id.toString() === player.deckId);
+                if (deckIndex !== -1) {
+                    if (player.result === 'win') user.decks[deckIndex].wins = (user.decks[deckIndex].wins || 0) + 1;
+                    if (player.result === 'loss') user.decks[deckIndex].losses = (user.decks[deckIndex].losses || 0) + 1;
                 }
             }
             
-            // Explicitly mark modified to ensure saving
             user.markModified('stats');
             user.markModified('decks');
             return user.save();
         });
 
         await Promise.all(updates);
-        res.json({ msg: "Game recorded" });
+        res.json({ msg: "Game recorded for all players" });
     } catch (err) { 
         console.error(err);
         res.status(500).json({ error: err.message }); 
@@ -167,9 +163,6 @@ app.post('/reset-stats', async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
         user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
-        // Reset deck stats too if you want, uncomment below:
-        // user.decks.forEach(d => { d.wins = 0; d.losses = 0; });
-        
         user.markModified('stats');
         await user.save();
         res.json(user.stats);
@@ -196,43 +189,86 @@ app.post('/record-deck-usage', async (req, res) => {
 
 // --- SOCKETS ---
 const socketToRoom = {};
-const socketToUser = {}; 
+const socketToUser = {};
+const roomHosts = {}; // New: Tracks host UserID for each room
 
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
 io.on('connection', (socket) => {
+    
     socket.on('join-room', (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
-        socketToUser[socket.id] = userId; 
+        socketToUser[socket.id] = userId;
+        
+        // --- HOST LOGIC ---
+        // If room has no host, or host is null, assign this user
+        if (!roomHosts[roomId] && !isSpectator) {
+            roomHosts[roomId] = userId;
+        }
+
+        // Broadcast who the host is to everyone in the room
+        io.to(roomId).emit('host-update', roomHosts[roomId]);
+
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
+
     socket.on('claim-status', ({ type, userId }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
+
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) socket.to(roomId).emit('game-state-updated', { userId, data });
     });
+
     socket.on('update-turn-state', (newState) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('turn-state-updated', newState);
     });
+    
     socket.on('reset-game-request', (data) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('game-reset', data);
     });
+    
     socket.on('update-seat-order', (newOrder) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('seat-order-updated', newOrder);
     });
-    socket.on('disconnect', () => {
+
+    socket.on('disconnect', async () => {
         const roomId = socketToRoom[socket.id];
-        const userId = socketToUser[socket.id]; 
+        const userId = socketToUser[socket.id];
+        
         if (roomId && userId) {
+            // Tell others to remove video
             socket.to(roomId).emit('user-disconnected', userId); 
+            
+            // --- HOST TRANSFER LOGIC ---
+            if (roomHosts[roomId] === userId) {
+                // Host left! Find a new host.
+                const socketsInRoom = await io.in(roomId).fetchSockets();
+                // Filter out the socket that just left (though fetchSockets might already exclude it, safe to filter)
+                const remainingSockets = socketsInRoom.filter(s => s.id !== socket.id);
+                
+                if (remainingSockets.length > 0) {
+                    // Pick the first available person
+                    const newHostSocketId = remainingSockets[0].id;
+                    const newHostId = socketToUser[newHostSocketId];
+                    if (newHostId) {
+                        roomHosts[roomId] = newHostId;
+                        io.to(roomId).emit('host-update', newHostId);
+                        console.log(`Host migrated to: ${newHostId}`);
+                    }
+                } else {
+                    // Room is empty
+                    delete roomHosts[roomId];
+                }
+            }
         }
+        
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
     });
