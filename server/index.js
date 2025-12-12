@@ -1,4 +1,8 @@
 require('dotenv').config();
+const path = require('path');
+// Ensure .env is read from the correct location if needed, or stick to standard config
+// require('dotenv').config({ path: path.resolve(__dirname, './.env') }); 
+
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const express = require('express');
@@ -25,6 +29,7 @@ app.use(express.json());
 const server = createServer(app);
 const io = new Server(server, { cors: corsOptions });
 
+// --- DB CONNECTION ---
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
         .then(() => console.log('✅ Connected to MongoDB'))
@@ -33,8 +38,7 @@ if (MONGO_URI) {
     console.log('⚠️ No MONGO_URI found. Database features will not work.');
 }
 
-// --- ROUTES ---
-
+// --- AUTH ROUTES ---
 app.post('/register', async (req, res) => {
     try {
         const { username, password } = req.body;
@@ -106,14 +110,11 @@ app.post('/update-stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- NEW: FINISH GAME ROUTE (Updates stats for ALL players) ---
 app.post('/finish-game', async (req, res) => {
     try {
-        const { results } = req.body; // Expects array: [{ userId, result: 'win'/'loss', deckId (optional) }]
-        
+        const { results } = req.body; 
         const updates = results.map(async (player) => {
-            if (!player.userId) return; // Skip guests
-            
+            if (!player.userId) return; 
             const user = await User.findById(player.userId);
             if (!user) return;
 
@@ -130,9 +131,8 @@ app.post('/finish-game', async (req, res) => {
             }
             return user.save();
         });
-
         await Promise.all(updates);
-        res.json({ msg: "Game recorded for all players" });
+        res.json({ msg: "Game recorded" });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -149,38 +149,58 @@ app.post('/reset-stats', async (req, res) => {
 
 // --- SOCKETS ---
 const socketToRoom = {};
+const socketToUser = {}; // <--- RE-ADDED THIS MAP
+
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
 io.on('connection', (socket) => {
+    
     socket.on('join-room', (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
+        socketToUser[socket.id] = userId; // <--- SAVE USER ID MAPPING
+        
+        console.log(`User ${userId} joined room ${roomId}`);
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
+
     socket.on('claim-status', ({ type, userId }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
+
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) socket.to(roomId).emit('game-state-updated', { userId, data });
     });
+
     socket.on('update-turn-state', (newState) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('turn-state-updated', newState);
     });
+    
     socket.on('reset-game-request', (data) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('game-reset', data);
     });
+    
     socket.on('update-seat-order', (newOrder) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) io.to(roomId).emit('seat-order-updated', newOrder);
     });
+
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
-        if (roomId) socket.to(roomId).emit('user-disconnected');
+        const userId = socketToUser[socket.id]; // <--- RETRIEVE USER ID
+        
+        if (roomId && userId) {
+            console.log(`User ${userId} disconnected`);
+            // <--- SEND ID SO FRONTEND KNOWS WHO TO REMOVE
+            socket.to(roomId).emit('user-disconnected', userId); 
+        }
+        
         delete socketToRoom[socket.id];
+        delete socketToUser[socket.id]; // <--- CLEANUP
     });
 });
 
