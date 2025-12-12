@@ -17,8 +17,9 @@ const UserSchema = new mongoose.Schema({
     losses: { type: Number, default: 0 },
     createdAt: { type: Date, default: Date.now }
   }],
-  // NEW: Tracks IDs of decks played in the current random cycle
   deckCycleHistory: { type: [String], default: [] },
+  // --- NEW: GROUPS ARRAY ---
+  groups: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
   createdAt: { type: Date, default: Date.now }
 });
 
