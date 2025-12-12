@@ -133,61 +133,7 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
     );
 };
 
-// --- NEW: SCROLLABLE DECK LIST COMPONENT ---
-const DeckList = ({ decks, selectedDeckId, onSelect, onAddDeck }) => {
-    return (
-        <div style={{
-            maxHeight: '200px', 
-            overflowY: 'auto', 
-            background: '#1a1a1a', 
-            border: '1px solid #444', 
-            borderRadius: '6px',
-            marginTop: '5px',
-            flex: 1
-        }}>
-            {decks.length === 0 && <div style={{padding: '10px', color: '#666', fontStyle:'italic', fontSize:'12px'}}>No decks found.</div>}
-            
-            {decks.map(deck => (
-                <div 
-                    key={deck._id} 
-                    onClick={() => onSelect(deck._id)}
-                    style={{
-                        padding: '10px', 
-                        cursor: 'pointer', 
-                        background: selectedDeckId === deck._id ? '#2563eb' : 'transparent',
-                        color: selectedDeckId === deck._id ? 'white' : '#ddd',
-                        borderBottom: '1px solid #333',
-                        fontSize: '14px',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '8px'
-                    }}
-                >
-                    {selectedDeckId === deck._id && <span>✓</span>}
-                    <span style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}}>{deck.name}</span>
-                </div>
-            ))}
-            
-            <div 
-                onClick={onAddDeck} 
-                style={{
-                    padding: '10px', 
-                    cursor: 'pointer', 
-                    color: '#4f46e5', 
-                    fontWeight: 'bold', 
-                    fontSize: '13px',
-                    background: '#111',
-                    borderTop: '1px solid #333',
-                    textAlign: 'center'
-                }}
-            >
-                ✨ + Create New Deck
-            </div>
-        </div>
-    );
-};
-
-// --- DECK SELECTION MODAL (UPDATED) ---
+// --- DECK SELECTION MODAL ---
 const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUser }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
@@ -224,6 +170,11 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
     };
 
     const handleConfirm = async () => {
+        if (selectedDeckId === "ADD_NEW") {
+            onOpenProfile();
+            return;
+        }
+
         if (wasRandomlyPicked && useCycle) {
             try {
                 const res = await fetch(`${API_URL}/record-deck-usage`, {
@@ -266,19 +217,27 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                              </div>
                         </div>
 
-                        <div style={{display: 'flex', gap: '10px', alignItems: 'flex-start'}}>
-                            {/* --- REPLACED SELECT WITH SCROLLABLE LIST --- */}
-                            <DeckList 
-                                decks={sortedDecks} 
-                                selectedDeckId={selectedDeckId} 
-                                onSelect={(id) => { setSelectedDeckId(id); setWasRandomlyPicked(false); }}
-                                onAddDeck={onOpenProfile} 
-                            />
+                        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                            <select 
+                                value={selectedDeckId} 
+                                onChange={e => {
+                                    if(e.target.value === "ADD_NEW") {
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                    } else {
+                                        setSelectedDeckId(e.target.value);
+                                        setWasRandomlyPicked(false);
+                                    }
+                                }} 
+                                style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
+                            >
+                                <option value="">-- No Deck --</option>
+                                {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                                <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
+                            </select>
                             
-                            <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                                <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', width: '40px', height: '40px', fontSize: '20px', display:'flex', alignItems:'center', justifyContent:'center' }}>🎲</button>
-                                <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', width: '40px', height: '40px', fontSize: '20px', display:'flex', alignItems:'center', justifyContent:'center' }}>{hideCommander ? '🙈' : '👁️'}</button>
-                            </div>
+                            <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
+                            
+                            <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
                 ) : (
@@ -407,7 +366,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED WITH SCROLLABLE LIST) ---
+// --- LOBBY (UPDATED WITH SCROLLABLE DROPDOWN) ---
 const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -542,19 +501,27 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                         </div>
                 </div>
 
-                <div style={{display: 'flex', gap: '10px', alignItems: 'flex-start'}}>
-                    {/* --- REPLACED SELECT WITH SCROLLABLE LIST --- */}
-                    <DeckList 
-                        decks={sortedDecks} 
-                        selectedDeckId={selectedDeckId} 
-                        onSelect={(id) => { onSelectDeck(id); setWasRandomlyPicked(false); }}
-                        onAddDeck={onOpenProfile} 
-                    />
+                <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
+                    {/* --- REVERTED TO STANDARD SELECT --- */}
+                    <select 
+                        value={selectedDeckId} 
+                        onChange={e => {
+                            if(e.target.value === "ADD_NEW") {
+                                onOpenProfile(); 
+                            } else {
+                                onSelectDeck(e.target.value);
+                                setWasRandomlyPicked(false);
+                            }
+                        }} 
+                        style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
+                    >
+                        <option value="">-- No Deck --</option>
+                        {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                        <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
+                    </select>
 
-                    <div style={{display: 'flex', flexDirection: 'column', gap: '10px'}}>
-                        <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', width: '40px', height: '40px', fontSize: '20px', display:'flex', alignItems:'center', justifyContent:'center' }}>🎲</button>
-                        <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', width: '40px', height: '40px', fontSize: '20px', display:'flex', alignItems:'center', justifyContent:'center' }}>{hideCommander ? '🙈' : '👁️'}</button>
-                    </div>
+                    <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
+                    <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                 </div>
             </div>
         )}
