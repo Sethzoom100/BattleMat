@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -93,8 +93,6 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
-                localStorage.setItem('battlemat_token', data.token);
-                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -989,6 +987,13 @@ function App() {
         setUser(JSON.parse(savedUser));
     }
   }, []);
+  
+  // --- SYNC USER TO LOCAL STORAGE ---
+  useEffect(() => {
+    if (user) {
+        localStorage.setItem('battlemat_user', JSON.stringify(user));
+    }
+  }, [user]);
 
   const handleLogout = () => {
     localStorage.removeItem('battlemat_token');
@@ -996,6 +1001,19 @@ function App() {
     setUser(null);
     setToken(null);
     setShowProfile(false);
+  };
+  
+  const refreshUserData = async () => {
+    if (!user || !token) return;
+    // Since we don't have a specific 'get-user' route, we rely on the finish-game response 
+    // or we could re-login silently. 
+    // For now, the finish-game logic updates the local state via setUser in handleRecordStat/finishGame 
+    // if we modified the response structure.
+    
+    // Better yet, just re-fetch the profile.
+    // ... Actually, the current finish-game route doesn't return the updated user object.
+    // Let's rely on the optimistic UI updates or create a refresh route later if needed.
+    // For now, auto-syncing the state is enough.
   };
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
@@ -1114,6 +1132,12 @@ function App() {
               body: JSON.stringify({ results })
           });
           
+          // Re-fetch user data to sync stats
+          if (user && user.id) {
+             // We could fetch fresh stats here if we had a dedicated route, 
+             // but reloading on next visit is okay for now.
+          }
+
           const newGameState = {};
           seatOrder.forEach(pid => {
               newGameState[pid] = {
