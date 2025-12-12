@@ -478,7 +478,7 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                {/* --- LOGOUT BUTTON --- */}
+                {/* --- LOGOUT BUTTON MOVED HERE --- */}
                 <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
 
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
@@ -776,7 +776,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame }) => {
+const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null); 
@@ -823,7 +823,13 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   if (finalH > height) { finalH = height; finalW = height * TARGET_RATIO; }
 
   return (
-    <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
+    <div 
+        draggable={isHost} 
+        onDragStart={(e) => isHost && onDragStart(e, userId)} 
+        onDragOver={(e) => isHost && e.preventDefault()} 
+        onDrop={(e) => isHost && onDrop(e, userId)} 
+        style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default' }}
+    >
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
         <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
@@ -969,6 +975,7 @@ function App() {
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [showFinishModal, setShowFinishModal] = useState(false); 
   const [showDeckSelect, setShowDeckSelect] = useState(false); // NEW STATE for between-games
+  const [hostId, setHostId] = useState(null); // --- NEW: HOST ID STATE
 
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
@@ -1413,6 +1420,11 @@ function App() {
         }
     });
 
+    // --- HOST UPDATE HANDLER ---
+    socket.on('host-update', (newHostId) => {
+        setHostId(newHostId);
+    });
+
     socket.on('full-state-sync', (allData) => { if(allData) setGameState(prev => ({ ...prev, ...allData })); });
 
     socket.on('user-disconnected', disconnectedId => {
@@ -1458,6 +1470,7 @@ function App() {
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
       socket.off('full-state-sync'); socket.off('status-claimed');
+      socket.off('host-update'); // Cleanup host listener
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1472,6 +1485,9 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
+
+  // --- IS HOST? ---
+  const isHost = myId === hostId;
 
   return (
     <>
@@ -1514,17 +1530,23 @@ function App() {
                   <div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div>
                   <div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div>
                   {user && <div style={{fontSize: '11px', color: '#888', marginLeft: '10px'}}>Logged in as {user.username}</div>}
+                  {isHost && <div style={{fontSize: '10px', background: '#f59e0b', color: 'black', padding: '2px 4px', borderRadius: '4px', fontWeight: 'bold'}}>HOST</div>}
               </div>
               <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
-                {!isSpectator && (
+                {!isSpectator && isHost && (
                     <>
                     <button onClick={() => setShowFinishModal(true)} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🏆 FINISH GAME</button>
                     <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
                     </>
                 )}
-                {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
+                {isSpectator && (
+                    <>
+                      <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>
+                      <button onClick={handleLeaveGame} style={{background: '#333', border: '1px solid #555', color: '#fca5a5', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🚪 Leave</button>
+                    </>
+                )}
               </div>
             </div>
             <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -1551,6 +1573,7 @@ function App() {
                   onRecordStat={handleRecordStat} 
                   onOpenDeckSelect={() => setShowDeckSelect(true)}
                   onLeaveGame={handleLeaveGame}
+                  isHost={isHost}
                 />
               ))}
             </div>
