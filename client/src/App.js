@@ -172,7 +172,7 @@ const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); 
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                     }
@@ -269,7 +269,8 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
-            <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
+            {/* UPDATED: Removed "Player Profile: " prefix */}
+            <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -394,6 +395,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
             <div>
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
+                    {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
                     <select 
                         value={selectedDeckId} 
                         onChange={e => {
@@ -640,7 +642,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect }) => {
+const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null); 
@@ -745,6 +747,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
+                                <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
 
                                 <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
                                 <div style={{padding: '8px', borderTop: '1px solid #444'}}>
@@ -889,6 +892,26 @@ function App() {
   
   const handleClaimStatus = (type) => {
       socket.emit('claim-status', { type, userId: myId });
+  };
+
+  // --- NEW: HANDLE LEAVE GAME (CLEANUP) ---
+  const handleLeaveGame = () => {
+      if(!window.confirm("Leave current game?")) return;
+      
+      if(streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
+      }
+      
+      if(peerRef.current) {
+          peerRef.current.destroy();
+      }
+      
+      socket.disconnect();
+      socket.connect();
+      
+      setHasJoined(false);
+      setGameState({});
+      setSeatOrder([]);
   };
 
   const handleRecordStat = async (isWin) => {
@@ -1283,6 +1306,8 @@ function App() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
+      
+      {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} />}
 
       {!hasJoined && (
@@ -1341,7 +1366,8 @@ function App() {
                   onInspectToken={setViewCard} 
                   onClaimStatus={handleClaimStatus} 
                   onRecordStat={handleRecordStat} 
-                  onOpenDeckSelect={() => setShowDeckSelect(true)} 
+                  onOpenDeckSelect={() => setShowDeckSelect(true)}
+                  onLeaveGame={handleLeaveGame}
                 />
               ))}
             </div>
