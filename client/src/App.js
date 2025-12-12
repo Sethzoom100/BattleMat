@@ -93,6 +93,10 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
+                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
+                localStorage.setItem('battlemat_token', data.token);
+                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
+                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -474,7 +478,7 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                {/* --- LOGOUT BUTTON MOVED HERE --- */}
+                {/* --- LOGOUT BUTTON --- */}
                 <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
 
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
@@ -1132,12 +1136,14 @@ function App() {
               body: JSON.stringify({ results })
           });
           
-          // Re-fetch user data to sync stats
+          // FETCH FRESH STATS
           if (user && user.id) {
-             // We could fetch fresh stats here if we had a dedicated route, 
-             // but reloading on next visit is okay for now.
+            const res = await fetch(`${API_URL}/user/${user.id}`);
+            const updatedUser = await res.json();
+            setUser(updatedUser); // Update local state immediately
+            localStorage.setItem('battlemat_user', JSON.stringify(updatedUser)); // Update storage
           }
-
+          
           const newGameState = {};
           seatOrder.forEach(pid => {
               newGameState[pid] = {
@@ -1518,12 +1524,7 @@ function App() {
                     <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
                     </>
                 )}
-                {isSpectator && (
-                    <>
-                      <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>
-                      <button onClick={handleLeaveGame} style={{background: '#333', border: '1px solid #555', color: '#fca5a5', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🚪 Leave</button>
-                    </>
-                )}
+                {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
               </div>
             </div>
             <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
