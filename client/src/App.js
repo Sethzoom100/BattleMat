@@ -222,7 +222,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                        onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                         setWasRandomlyPicked(false);
@@ -366,7 +366,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED WITH SCROLLABLE DROPDOWN) ---
+// --- LOBBY (UPDATED: JOIN BUTTON DISABLED IF NO USER) ---
 const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -475,7 +475,19 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
             <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
         )}
         <div style={{ display: 'flex', gap: '30px' }}>
-          <button onClick={() => setStep('setup')} style={lobbyBtnStyle}>🎥 Join as Player</button>
+            {/* --- UPDATED: BUTTON DISABLED IF NO USER --- */}
+            <button 
+                onClick={() => user && setStep('setup')} 
+                disabled={!user}
+                style={{
+                    ...lobbyBtnStyle, 
+                    background: user ? '#2563eb' : '#444', 
+                    cursor: user ? 'pointer' : 'not-allowed',
+                    opacity: user ? 1 : 0.6
+                }}
+            >
+                {user ? '🎥 Join as Player' : '🔒 Login to Play'}
+            </button>
           <button onClick={handleSpectate} style={{...lobbyBtnStyle, background: '#333', color: '#ccc', border: '1px solid #555'}}>👁️ Spectate Only</button>
         </div>
       </div>
@@ -502,7 +514,7 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                 </div>
 
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                    {/* --- REVERTED TO STANDARD SELECT --- */}
+                    {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
                     <select 
                         value={selectedDeckId} 
                         onChange={e => {
