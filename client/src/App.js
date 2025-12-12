@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -459,7 +459,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); 
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                         setWasRandomlyPicked(false);
@@ -1700,10 +1700,16 @@ function App() {
         });
     });
 
+    // --- HOST UPDATE HANDLER ---
+    socket.on('host-update', (newHostId) => {
+        setHostId(newHostId);
+    });
+
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
       socket.off('full-state-sync'); socket.off('status-claimed');
+      socket.off('host-update');
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
