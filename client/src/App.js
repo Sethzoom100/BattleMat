@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -133,7 +133,7 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
     );
 };
 
-// --- DECK SELECTION MODAL (UPDATED WITH RANDOM PICKER) ---
+// --- DECK SELECTION MODAL ---
 const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUser }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
@@ -149,16 +149,13 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
         let pool = [...user.decks];
         let willReset = false;
 
-        // CYCLE LOGIC: Filter out decks already played in this cycle
         if (useCycle && user.deckCycleHistory) {
             const playedIds = user.deckCycleHistory;
             const remaining = pool.filter(d => !playedIds.includes(d._id));
-            
             if (remaining.length === 0) {
-                // All decks played! Reset cycle.
                 willReset = true;
                 alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
-                pool = [...user.decks]; // Reset pool to full
+                pool = [...user.decks];
             } else {
                 pool = remaining;
             }
@@ -168,8 +165,8 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
         const randomDeck = pool[randomIndex];
         
         setSelectedDeckId(randomDeck._id);
-        setWasRandomlyPicked(true); // Mark flag to update DB on confirm
-        setResetCycle(willReset);   // Mark flag if we need to clear history
+        setWasRandomlyPicked(true);
+        setResetCycle(willReset);
     };
 
     const handleConfirm = async () => {
@@ -178,7 +175,6 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
             return;
         }
 
-        // --- UPDATE CYCLE HISTORY (If Random was used and Cycle is checked) ---
         if (wasRandomlyPicked && useCycle) {
             try {
                 const res = await fetch(`${API_URL}/record-deck-usage`, {
@@ -187,7 +183,6 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                     body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
                 });
                 const newHistory = await res.json();
-                // Update local user state so we don't have to refetch everything
                 onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
             } catch (err) { console.error("Failed to update deck cycle", err); }
         }
@@ -217,8 +212,8 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
                              <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                              <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                <input type="checkbox" checked={useCycle} onChange={e => setUseCycle(e.target.checked)} id="cycleCheck" style={{cursor:'pointer'}} />
-                                <label htmlFor="cycleCheck" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle (No Repeats)</label>
+                                <input type="checkbox" checked={useCycle} onChange={e => setUseCycle(e.target.checked)} id="cycleCheckModal" style={{cursor:'pointer'}} />
+                                <label htmlFor="cycleCheckModal" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
                              </div>
                         </div>
 
@@ -230,7 +225,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                         onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
-                                        setWasRandomlyPicked(false); // Manual pick resets random flag
+                                        setWasRandomlyPicked(false);
                                     }
                                 }} 
                                 style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
@@ -239,9 +234,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                                 <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                             </select>
-                            
                             <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
-                            
                             <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
@@ -371,13 +364,19 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY ---
-const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
+// --- LOBBY (UPDATED WITH RANDOM PICKER) ---
+const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [previewStream, setPreviewStream] = useState(null);
   const [hideCommander, setHideCommander] = useState(false); 
+  
+  // Random State
+  const [useCycle, setUseCycle] = useState(false);
+  const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
+  const [resetCycle, setResetCycle] = useState(false);
+
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -402,7 +401,47 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, selectedDeviceId]);
 
+  // --- RANDOM DECK LOGIC ---
+  const handleRandom = () => {
+    if (!user || !user.decks || user.decks.length === 0) return;
+    
+    let pool = [...user.decks];
+    let willReset = false;
+
+    if (useCycle && user.deckCycleHistory) {
+        const playedIds = user.deckCycleHistory;
+        const remaining = pool.filter(d => !playedIds.includes(d._id));
+        if (remaining.length === 0) {
+            willReset = true;
+            alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
+            pool = [...user.decks];
+        } else {
+            pool = remaining;
+        }
+    }
+
+    const randomIndex = Math.floor(Math.random() * pool.length);
+    const randomDeck = pool[randomIndex];
+    
+    onSelectDeck(randomDeck._id); // Update parent state
+    setWasRandomlyPicked(true);
+    setResetCycle(willReset);
+  };
+
   const handleEnterGame = async () => { 
+      // RECORD CYCLE USAGE IF RANDOM WAS USED
+      if (wasRandomlyPicked && useCycle && user && token) {
+        try {
+            const res = await fetch(`${API_URL}/record-deck-usage`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
+                body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
+            });
+            const newHistory = await res.json();
+            onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
+        } catch (err) { console.error("Failed to update deck cycle", err); }
+      }
+
       let deckData = null;
       if (user && user.decks && selectedDeckId) {
           const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -449,10 +488,16 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        
         {user && user.decks && (
             <div>
-                <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
+                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
+                        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
+                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
+                        <input type="checkbox" checked={useCycle} onChange={e => setUseCycle(e.target.checked)} id="cycleCheckLobby" style={{cursor:'pointer'}} />
+                        <label htmlFor="cycleCheckLobby" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
+                        </div>
+                </div>
+
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
                     {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
                     <select 
@@ -462,6 +507,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
                                 onOpenProfile(); 
                             } else {
                                 onSelectDeck(e.target.value);
+                                setWasRandomlyPicked(false); // Manual pick resets random flag
                             }
                         }} 
                         style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
@@ -471,6 +517,7 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
                         <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                     </select>
 
+                    <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
                     <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                 </div>
             </div>
@@ -802,6 +849,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
+                                
+                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
@@ -1371,10 +1420,12 @@ function App() {
         <Lobby 
             onJoin={joinGame} 
             user={user} 
+            token={token}
             onOpenAuth={() => setShowAuthModal(true)} 
             onOpenProfile={() => setShowProfile(true)}
             onSelectDeck={setSelectedDeckId}
             selectedDeckId={selectedDeckId}
+            onUpdateUser={setUser}
         />
       )}
 
