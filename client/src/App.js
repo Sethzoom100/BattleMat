@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
+const API_URL = 'https://battlemat.onrender.com'; 
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -117,7 +117,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- GROUPS MODAL (UPDATED WITH LEADERBOARD) ---
+// --- GROUPS MODAL ---
 const GroupsModal = ({ user, onClose, onUpdateUser }) => {
     const [view, setView] = useState('list'); // 'list' or 'detail'
     const [newGroupName, setNewGroupName] = useState("");
@@ -334,7 +334,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
         </div>
     );
 };
-
 
 // --- FINISH GAME MODAL ---
 const FinishGameModal = ({ players, onFinish, onClose }) => {
@@ -1125,8 +1124,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                                 
-                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
-                                
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
 
@@ -1207,7 +1204,7 @@ function App() {
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
   const [showHistory, setShowHistory] = useState(false); 
-  const [showGroups, setShowGroups] = useState(false); // NEW STATE for Groups
+  const [showGroups, setShowGroups] = useState(false); 
   
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
@@ -1721,6 +1718,9 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
+
+  // --- IS HOST? ---
+  const isHost = myId === hostId;
 
   return (
     <>
