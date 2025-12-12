@@ -57,7 +57,6 @@ app.post('/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
         const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
-        // UPDATED: Return deckCycleHistory
         res.json({ token, user: { id: user._id, username: user.username, stats: user.stats, decks: user.decks, deckCycleHistory: user.deckCycleHistory } });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -107,44 +106,76 @@ app.post('/update-stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- UPDATED: FINISH GAME ROUTE ---
 app.post('/finish-game', async (req, res) => {
     try {
         const { results } = req.body; 
+        
         const updates = results.map(async (player) => {
             if (!player.userId) return; 
+            
             const user = await User.findById(player.userId);
             if (!user) return;
 
-            user.stats.gamesPlayed += 1;
-            if (player.result === 'win') user.stats.wins += 1;
-            if (player.result === 'loss') user.stats.losses += 1;
+            // Update Player Global Stats
+            user.stats.gamesPlayed = (user.stats.gamesPlayed || 0) + 1;
+            if (player.result === 'win') user.stats.wins = (user.stats.wins || 0) + 1;
+            if (player.result === 'loss') user.stats.losses = (user.stats.losses || 0) + 1;
 
+            // Update Specific Deck Stats
             if (player.deckId) {
-                const deck = user.decks.find(d => d._id.toString() === player.deckId);
-                if (deck) {
-                    if (player.result === 'win') deck.wins += 1;
-                    if (player.result === 'loss') deck.losses += 1;
+                // Find deck by ID (converting ObjectId to string for safe comparison)
+                const deckIndex = user.decks.findIndex(d => d._id.toString() === player.deckId);
+                
+                if (deckIndex !== -1) {
+                    if (player.result === 'win') {
+                        user.decks[deckIndex].wins = (user.decks[deckIndex].wins || 0) + 1;
+                    }
+                    if (player.result === 'loss') {
+                        user.decks[deckIndex].losses = (user.decks[deckIndex].losses || 0) + 1;
+                    }
                 }
             }
+            
+            // Mark fields as modified to ensure Mongoose saves them
+            user.markModified('stats');
+            user.markModified('decks');
             return user.save();
         });
+
         await Promise.all(updates);
-        res.json({ msg: "Game recorded" });
-    } catch (err) { res.status(500).json({ error: err.message }); }
+        res.json({ msg: "Game recorded for all players" });
+    } catch (err) { 
+        console.error("Finish Game Error:", err);
+        res.status(500).json({ error: err.message }); 
+    }
 });
 
+// --- UPDATED: RESET STATS ROUTE ---
 app.post('/reset-stats', async (req, res) => {
     try {
         const { userId } = req.body;
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
+        
+        // Reset Global Stats
         user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
+        
+        // OPTIONAL: Also reset deck stats? 
+        // If you want to reset decks too, uncomment lines below:
+        // user.decks.forEach(deck => {
+        //    deck.wins = 0;
+        //    deck.losses = 0;
+        // });
+
+        user.markModified('stats');
+        // user.markModified('decks'); // Uncomment if resetting decks
+
         await user.save();
         res.json(user.stats);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- NEW: RECORD DECK CYCLE USAGE ---
 app.post('/record-deck-usage', async (req, res) => {
     try {
         const { userId, deckId, resetCycle } = req.body;
@@ -152,9 +183,8 @@ app.post('/record-deck-usage', async (req, res) => {
         if (!user) return res.status(404).json({ msg: "User not found" });
 
         if (resetCycle) {
-            user.deckCycleHistory = [deckId]; // Start new cycle with this deck
+            user.deckCycleHistory = [deckId]; 
         } else {
-            // Only add if not already there (prevent dupes if clicked multiple times)
             if (!user.deckCycleHistory.includes(deckId)) {
                 user.deckCycleHistory.push(deckId);
             }
