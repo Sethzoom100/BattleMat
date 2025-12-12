@@ -18,8 +18,15 @@ const UserSchema = new mongoose.Schema({
     createdAt: { type: Date, default: Date.now }
   }],
   deckCycleHistory: { type: [String], default: [] },
-  // --- NEW: GROUPS ARRAY ---
   groups: [{ type: mongoose.Schema.Types.ObjectId, ref: 'Group' }],
+  
+  // --- NEW: MATCH HISTORY FOR TIME-BASED STATS ---
+  matchHistory: [{
+    result: { type: String, enum: ['win', 'loss'] }, // 'win' or 'loss'
+    deckId: { type: String },
+    date: { type: Date, default: Date.now }
+  }],
+  
   createdAt: { type: Date, default: Date.now }
 });
 
