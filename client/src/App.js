@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
+const API_URL = 'https://battlemat.onrender.com'; 
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -93,10 +93,8 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
-                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -731,8 +729,8 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   // Logic simplified: No inputs, just display.
   
   if (secretData) {
-      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
-      return <span style={{color: '#777', fontStyle: 'italic'}}>🙈 Hidden</span>;
+      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
   }
 
   if (cardData) {
@@ -740,14 +738,14 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
         <span 
             onMouseEnter={() => onHover(cardData)} 
             onMouseLeave={onLeave} 
-            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold' }}
+            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold', fontSize: '10px' }}
         >
             {cardData.name}
         </span>
       );
   }
 
-  return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
+  return <span style={{color: '#777', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
@@ -883,8 +881,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
-                                
-                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
@@ -1077,17 +1073,27 @@ function App() {
   const handleLeaveGame = () => {
       if(!window.confirm("Leave current game?")) return;
       
-      if(streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
+      // 1. Stop all tracks in the local stream
+      if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
       }
       
-      if(peerRef.current) {
+      // 2. Destroy the PeerJS connection
+      if (peerRef.current) {
           peerRef.current.destroy();
       }
       
+      // 3. Clear all connection-related state and refs
+      setMyStream(null);
+      streamRef.current = null;
+      setPeers([]);
+      peersRef.current = {};
+      
+      // 4. Force disconnect socket to notify server, then reconnect for lobby
       socket.disconnect();
       socket.connect();
       
+      // 5. Reset UI state
       setHasJoined(false);
       setGameState({});
       setSeatOrder([]);
