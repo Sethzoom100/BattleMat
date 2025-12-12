@@ -3,7 +3,7 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
 const socket = io(API_URL);
 
 // --- ASSETS ---
@@ -148,9 +148,8 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
     
-    // --- UPDATED: LOAD CYCLE PREFERENCE FROM STORAGE ---
+    // Random State
     const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-    
     const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
     const [resetCycle, setResetCycle] = useState(false);
 
@@ -344,6 +343,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
+            
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -394,9 +394,8 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
   const [previewStream, setPreviewStream] = useState(null);
   const [hideCommander, setHideCommander] = useState(false); 
   
-  // --- UPDATED: LOAD CYCLE PREFERENCE FROM STORAGE ---
+  // Random State
   const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-  
   const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
   const [resetCycle, setResetCycle] = useState(false);
 
@@ -751,8 +750,8 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   // Logic simplified: No inputs, just display.
   
   if (secretData) {
-      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
-      return <span style={{color: '#777', fontStyle: 'italic'}}>🙈 Hidden</span>;
+      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
   }
 
   if (cardData) {
@@ -760,14 +759,14 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
         <span 
             onMouseEnter={() => onHover(cardData)} 
             onMouseLeave={onLeave} 
-            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold' }}
+            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold', fontSize: '10px' }}
         >
             {cardData.name}
         </span>
       );
   }
 
-  return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
+  return <span style={{color: '#777', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
@@ -903,8 +902,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
-                                
-                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
@@ -1097,17 +1094,27 @@ function App() {
   const handleLeaveGame = () => {
       if(!window.confirm("Leave current game?")) return;
       
-      if(streamRef.current) {
-          streamRef.current.getTracks().forEach(t => t.stop());
+      // 1. Stop all tracks in the local stream
+      if (streamRef.current) {
+          streamRef.current.getTracks().forEach(track => track.stop());
       }
       
-      if(peerRef.current) {
+      // 2. Destroy the PeerJS connection
+      if (peerRef.current) {
           peerRef.current.destroy();
       }
       
+      // 3. Clear all connection-related state and refs
+      setMyStream(null);
+      streamRef.current = null;
+      setPeers([]);
+      peersRef.current = {};
+      
+      // 4. Force disconnect socket to notify server, then reconnect for lobby
       socket.disconnect();
       socket.connect();
       
+      // 5. Reset UI state
       setHasJoined(false);
       setGameState({});
       setSeatOrder([]);
@@ -1481,11 +1488,16 @@ function App() {
         });
     });
 
+    // --- HOST UPDATE HANDLER ---
+    socket.on('host-update', (newHostId) => {
+        setHostId(newHostId);
+    });
+
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
       socket.off('full-state-sync'); socket.off('status-claimed');
-      socket.off('host-update'); // Cleanup host listener
+      socket.off('host-update');
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1500,6 +1512,9 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
+  
+  // --- IS HOST? ---
+  const isHost = myId === hostId;
 
   return (
     <>
@@ -1514,8 +1529,6 @@ function App() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
-      
-      {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
 
       {!hasJoined && (
