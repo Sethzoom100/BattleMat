@@ -172,7 +172,7 @@ const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile();
+                                        onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                     }
@@ -298,12 +298,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {sortedDecks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
-                        {/* --- UPDATED: Zoom 120%, Offset Top 20% --- */}
-                        <div style={{
-                            height: '180px', 
-                            background: `url(${deck.image}) center 20% / 120% no-repeat`,
-                            borderBottom: '1px solid #333'
-                        }}></div>
+                        <div style={{ height: '180px', background: `url(${deck.image}) center 20% / 120% no-repeat`, borderBottom: '1px solid #333' }}></div>
                         <div style={{padding: '15px'}}>
                             <div style={{fontWeight: 'bold', fontSize: '16px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis'}} title={deck.name}>{deck.name}</div>
                             <div style={{fontSize: '13px', marginTop: '5px'}}>Win Rate: {deck.wins + deck.losses > 0 ? Math.round((deck.wins / (deck.wins+deck.losses))*100) : 0}%</div>
@@ -900,27 +895,100 @@ function App() {
       socket.emit('claim-status', { type, userId: myId });
   };
 
-  // --- RECORD STATS (WITH DECK) ---
   const handleRecordStat = async (isWin) => {
-      if (!user || !token) {
-          alert("Please login to record stats!");
-          return;
-      }
+      if (!user || !token) { alert("Please login to record stats!"); return; }
       try {
           const res = await fetch(`${API_URL}/update-stats`, {
               method: 'POST',
-              headers: { 
-                  'Content-Type': 'application/json',
-                  'Authorization': `Bearer ${token}` 
-              },
+              headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
               body: JSON.stringify({ userId: user.id, win: isWin, loss: !isWin, deckId: selectedDeckId })
           });
           const data = await res.json();
           setUser(prev => ({ ...prev, stats: data.stats, decks: data.decks }));
           alert(`Stat Recorded! Total Wins: ${data.stats.wins}`);
-      } catch (err) {
-          console.error(err);
+      } catch (err) { console.error(err); }
+  };
+
+  // --- HANDLE DECK CONFIRM (BETWEEN GAMES) ---
+  const handleDeckConfirm = (deckData, isSecret, deckId) => {
+      setSelectedDeckId(deckId); // Update local deck selection
+      
+      const updates = { 
+          deckId: deckId, // Store deck ID for next game tracking
+          commanders: {}, 
+          secretCommanders: null 
+      };
+      
+      if (deckData) {
+          if (isSecret) updates.secretCommanders = deckData;
+          else updates.commanders = deckData;
       }
+      
+      handleUpdateGame(myId, updates);
+      setShowDeckSelect(false);
+  };
+
+  const handleFinishGame = async (winnerId) => {
+      const results = seatOrder.map(pid => {
+          const pData = gameState[pid];
+          return {
+              userId: pData?.dbId, 
+              result: pid === winnerId ? 'win' : 'loss',
+              deckId: pData?.deckId
+          };
+      });
+
+      try {
+          await fetch(`${API_URL}/finish-game`, {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ results })
+          });
+          
+          const newGameState = {};
+          seatOrder.forEach(pid => {
+              newGameState[pid] = {
+                  life: 40, poison: 0, commanders: {}, cmdDamageTaken: {}, tokens: [], isMonarch: false, isInitiative: false,
+                  username: gameState[pid]?.username,
+                  dbId: gameState[pid]?.dbId,
+                  deckId: gameState[pid]?.deckId 
+              };
+          });
+          const newTurnState = { activeId: null, count: 1 };
+          socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
+          setShowFinishModal(false);
+      } catch (err) { console.error(err); }
+  };
+
+  const randomizeSeats = () => {
+    const shuffled = [...seatOrder];
+    for (let i = shuffled.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
+    }
+    setSeatOrder(shuffled);
+    socket.emit('update-seat-order', shuffled);
+  };
+
+  const resetGame = () => {
+    if(!window.confirm("Are you sure you want to reset the game?")) return;
+    const newGameState = {};
+    const allIds = [myId, ...peers.map(p => p.id)];
+    allIds.forEach(pid => {
+        newGameState[pid] = {
+            life: 40,
+            poison: 0,
+            commanders: { primary: null, partner: null },
+            cmdDamageTaken: {},
+            tokens: [],
+            isMonarch: false,
+            isInitiative: false
+        };
+    });
+    const newTurnState = { activeId: null, count: 1 };
+    setGameState(newGameState);
+    setTurnState(newTurnState);
+    socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
   };
 
   const handleInvite = () => {
@@ -996,37 +1064,6 @@ function App() {
     setTurnState(newState);
     socket.emit('update-turn-state', newState);
   }, [seatOrder, turnState, gameState]);
-
-  const resetGame = () => {
-    if(!window.confirm("Are you sure you want to reset the game?")) return;
-    const newGameState = {};
-    const allIds = [myId, ...peers.map(p => p.id)];
-    allIds.forEach(pid => {
-        newGameState[pid] = {
-            life: 40,
-            poison: 0,
-            commanders: { primary: null, partner: null },
-            cmdDamageTaken: {},
-            tokens: [],
-            isMonarch: false,
-            isInitiative: false
-        };
-    });
-    const newTurnState = { activeId: null, count: 1 };
-    setGameState(newGameState);
-    setTurnState(newTurnState);
-    socket.emit('reset-game-request', { gameState: newGameState, turnState: newTurnState });
-  };
-
-  const randomizeSeats = () => {
-    const shuffled = [...seatOrder];
-    for (let i = shuffled.length - 1; i > 0; i--) {
-        const j = Math.floor(Math.random() * (i + 1));
-        [shuffled[i], shuffled[j]] = [shuffled[j], shuffled[i]];
-    }
-    setSeatOrder(shuffled);
-    socket.emit('update-seat-order', shuffled);
-  };
 
   const switchCameraStream = () => {
     if (!myStream) return;
@@ -1250,6 +1287,8 @@ function App() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
+      
+      {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} />}
 
       {!hasJoined && (
