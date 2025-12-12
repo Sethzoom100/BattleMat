@@ -48,7 +48,7 @@ app.get('/user/:id', async (req, res) => {
             stats: user.stats, 
             decks: user.decks, 
             deckCycleHistory: user.deckCycleHistory,
-            groups: user.groups 
+            groups: user.groups
         });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -92,10 +92,8 @@ app.post('/join-group', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// UPDATED: FETCH FULL MEMBER DATA FOR LEADERBOARDS
 app.get('/group-details/:groupId', async (req, res) => {
     try {
-        // We need 'decks' and 'matchHistory' to calculate leaderboards
         const group = await Group.findById(req.params.groupId)
             .populate({
                 path: 'members',
@@ -186,24 +184,20 @@ app.post('/update-stats', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- UPDATED: FINISH GAME ROUTE (Adds to Match History) ---
 app.post('/finish-game', async (req, res) => {
     try {
         const { results } = req.body; 
-        console.log("Finishing game with results:", results);
-
+        
         const updates = results.map(async (player) => {
             if (!player.userId) return; 
             
             const user = await User.findById(player.userId);
             if (!user) return;
 
-            // 1. Update Global Stats
             user.stats.gamesPlayed = (user.stats.gamesPlayed || 0) + 1;
             if (player.result === 'win') user.stats.wins = (user.stats.wins || 0) + 1;
             if (player.result === 'loss') user.stats.losses = (user.stats.losses || 0) + 1;
 
-            // 2. Update Specific Deck Stats
             if (player.deckId) {
                 const deckIndex = user.decks.findIndex(d => d._id.toString() === player.deckId);
                 if (deckIndex !== -1) {
@@ -212,7 +206,6 @@ app.post('/finish-game', async (req, res) => {
                 }
             }
 
-            // 3. Add to Match History (For Leaderboards)
             user.matchHistory.push({
                 result: player.result,
                 deckId: player.deckId,
@@ -221,7 +214,7 @@ app.post('/finish-game', async (req, res) => {
             
             user.markModified('stats');
             user.markModified('decks');
-            user.markModified('matchHistory'); // Important!
+            user.markModified('matchHistory'); 
             return user.save();
         });
 
@@ -239,7 +232,7 @@ app.post('/reset-stats', async (req, res) => {
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
         user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
-        user.matchHistory = []; // Clear history on reset? Usually yes.
+        user.matchHistory = []; 
         user.markModified('stats');
         user.markModified('matchHistory');
         await user.save();
@@ -268,22 +261,37 @@ app.post('/record-deck-usage', async (req, res) => {
 // --- SOCKETS ---
 const socketToRoom = {};
 const socketToUser = {};
+const socketIsSpectator = {}; // --- NEW: Track spectator status
 const roomHosts = {}; 
 
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
 io.on('connection', (socket) => {
     
-    socket.on('join-room', (roomId, userId, isSpectator) => {
+    socket.on('join-room', async (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
+        socketIsSpectator[socket.id] = isSpectator;
         
-        if (!roomHosts[roomId] && !isSpectator) {
+        // --- IMPROVED HOST LOGIC ---
+        let currentHostId = roomHosts[roomId];
+        
+        // 1. Get all active sockets in this room
+        const sockets = await io.in(roomId).fetchSockets();
+        
+        // 2. Check if the "recorded" host is actually still in the room
+        const isHostActive = sockets.some(s => socketToUser[s.id] === currentHostId);
+
+        // 3. If there is NO host, OR the recorded host is gone, assign the new joiner (if they are playing)
+        if ((!currentHostId || !isHostActive) && !isSpectator) {
             roomHosts[roomId] = userId;
+            currentHostId = userId;
+            console.log(`Host assigned to: ${userId}`);
         }
 
-        io.to(roomId).emit('host-update', roomHosts[roomId]);
+        // 4. Force update everyone in the room with the definitive host
+        io.to(roomId).emit('host-update', currentHostId);
 
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
@@ -320,18 +328,19 @@ io.on('connection', (socket) => {
         if (roomId && userId) {
             socket.to(roomId).emit('user-disconnected', userId); 
             
+            // --- HOST MIGRATION ---
             if (roomHosts[roomId] === userId) {
                 const socketsInRoom = await io.in(roomId).fetchSockets();
-                const remainingSockets = socketsInRoom.filter(s => s.id !== socket.id);
+                // Find next non-spectator
+                const nextPlayer = socketsInRoom.find(s => !socketIsSpectator[s.id] && s.id !== socket.id);
                 
-                if (remainingSockets.length > 0) {
-                    const newHostSocketId = remainingSockets[0].id;
-                    const newHostId = socketToUser[newHostSocketId];
-                    if (newHostId) {
-                        roomHosts[roomId] = newHostId;
-                        io.to(roomId).emit('host-update', newHostId);
-                    }
+                if (nextPlayer) {
+                    const nextUserId = socketToUser[nextPlayer.id];
+                    roomHosts[roomId] = nextUserId;
+                    io.to(roomId).emit('host-update', nextUserId);
+                    console.log(`Host migrated to: ${nextUserId}`);
                 } else {
+                    // No players left
                     delete roomHosts[roomId];
                 }
             }
@@ -339,6 +348,7 @@ io.on('connection', (socket) => {
         
         delete socketToRoom[socket.id];
         delete socketToUser[socket.id];
+        delete socketIsSpectator[socket.id];
     });
 });
 
