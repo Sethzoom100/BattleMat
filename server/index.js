@@ -1,5 +1,4 @@
 require('dotenv').config();
-const path = require('path');
 const { createServer } = require('http');
 const { Server } = require('socket.io');
 const express = require('express');
@@ -8,6 +7,7 @@ const mongoose = require('mongoose');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const User = require('./models/User');
+const Group = require('./models/Group'); // --- NEW IMPORT
 
 const PORT = process.env.PORT || 3001; 
 const MONGO_URI = process.env.MONGO_URI; 
@@ -36,17 +36,73 @@ if (MONGO_URI) {
 
 // --- ROUTES ---
 
+// Helper to get random code
+const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
+
+// UPDATED: Get User Data (Populates Groups)
 app.get('/user/:id', async (req, res) => {
     try {
-        const user = await User.findById(req.params.id);
-        if (!user) return res.status(404).json({ msg: "User not found" });
+        const user = await User.findById(req.params.id).populate('groups');
+        if (!user) return res.status(440).json({ msg: "User not found" });
         res.json({ 
             id: user._id, 
             username: user.username, 
             stats: user.stats, 
             decks: user.decks, 
-            deckCycleHistory: user.deckCycleHistory 
+            deckCycleHistory: user.deckCycleHistory,
+            groups: user.groups // Send groups to frontend
         });
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- NEW: CREATE GROUP ---
+app.post('/create-group', async (req, res) => {
+    try {
+        const { userId, name } = req.body;
+        const user = await User.findById(userId);
+        if(!user) return res.status(404).json({msg: "User not found"});
+
+        const code = generateCode();
+        const newGroup = new Group({ name, code, members: [userId] });
+        await newGroup.save();
+
+        user.groups.push(newGroup._id);
+        await user.save();
+
+        const populatedUser = await User.findById(userId).populate('groups');
+        res.json(populatedUser.groups);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- NEW: JOIN GROUP ---
+app.post('/join-group', async (req, res) => {
+    try {
+        const { userId, code } = req.body;
+        const user = await User.findById(userId);
+        const group = await Group.findOne({ code });
+
+        if(!user) return res.status(404).json({msg: "User not found"});
+        if(!group) return res.status(404).json({msg: "Group not found"});
+
+        // Check if already in group
+        if(group.members.includes(userId)) return res.status(400).json({msg: "Already in group"});
+
+        group.members.push(userId);
+        await group.save();
+
+        user.groups.push(group._id);
+        await user.save();
+
+        const populatedUser = await User.findById(userId).populate('groups');
+        res.json(populatedUser.groups);
+    } catch (err) { res.status(500).json({ error: err.message }); }
+});
+
+// --- NEW: GET GROUP DETAILS ---
+app.get('/group-details/:groupId', async (req, res) => {
+    try {
+        const group = await Group.findById(req.params.groupId).populate('members', 'username stats');
+        res.json(group);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -64,15 +120,26 @@ app.post('/register', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// UPDATED: Login now populates groups
 app.post('/login', async (req, res) => {
     try {
         const { username, password } = req.body;
-        const user = await User.findOne({ username });
+        const user = await User.findOne({ username }).populate('groups');
         if (!user) return res.status(400).json({ msg: "User not found" });
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
         const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ token, user: { id: user._id, username: user.username, stats: user.stats, decks: user.decks, deckCycleHistory: user.deckCycleHistory } });
+        res.json({ 
+            token, 
+            user: { 
+                id: user._id, 
+                username: user.username, 
+                stats: user.stats, 
+                decks: user.decks, 
+                deckCycleHistory: user.deckCycleHistory,
+                groups: user.groups 
+            } 
+        });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -190,7 +257,7 @@ app.post('/record-deck-usage', async (req, res) => {
 // --- SOCKETS ---
 const socketToRoom = {};
 const socketToUser = {};
-const roomHosts = {}; // New: Tracks host UserID for each room
+const roomHosts = {}; 
 
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
@@ -201,13 +268,10 @@ io.on('connection', (socket) => {
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
         
-        // --- HOST LOGIC ---
-        // If room has no host, or host is null, assign this user
         if (!roomHosts[roomId] && !isSpectator) {
             roomHosts[roomId] = userId;
         }
 
-        // Broadcast who the host is to everyone in the room
         io.to(roomId).emit('host-update', roomHosts[roomId]);
 
         socket.to(roomId).emit('user-connected', userId, isSpectator);
@@ -243,27 +307,20 @@ io.on('connection', (socket) => {
         const userId = socketToUser[socket.id];
         
         if (roomId && userId) {
-            // Tell others to remove video
             socket.to(roomId).emit('user-disconnected', userId); 
             
-            // --- HOST TRANSFER LOGIC ---
             if (roomHosts[roomId] === userId) {
-                // Host left! Find a new host.
                 const socketsInRoom = await io.in(roomId).fetchSockets();
-                // Filter out the socket that just left (though fetchSockets might already exclude it, safe to filter)
                 const remainingSockets = socketsInRoom.filter(s => s.id !== socket.id);
                 
                 if (remainingSockets.length > 0) {
-                    // Pick the first available person
                     const newHostSocketId = remainingSockets[0].id;
                     const newHostId = socketToUser[newHostSocketId];
                     if (newHostId) {
                         roomHosts[roomId] = newHostId;
                         io.to(roomId).emit('host-update', newHostId);
-                        console.log(`Host migrated to: ${newHostId}`);
                     }
                 } else {
-                    // Room is empty
                     delete roomHosts[roomId];
                 }
             }
