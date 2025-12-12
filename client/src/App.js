@@ -133,12 +133,17 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
     );
 };
 
-// --- DECK SELECTION MODAL ---
-const DeckSelectionModal = ({ user, onConfirm }) => {
+// --- DECK SELECTION MODAL (Sorted & Add Option) ---
+const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
 
     const handleConfirm = async () => {
+        if (selectedDeckId === "ADD_NEW") {
+            onOpenProfile();
+            return;
+        }
+
         let deckData = null;
         if (user && user.decks && selectedDeckId) {
             const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -152,24 +157,38 @@ const DeckSelectionModal = ({ user, onConfirm }) => {
         onConfirm(deckData, hideCommander, selectedDeckId);
     };
 
+    // Sort decks alphabetically for the modal
+    const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
+
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 200000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '350px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>Next Game Setup</h2>
                 
-                {user && user.decks && user.decks.length > 0 ? (
+                {user ? (
                     <div>
                         <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                         <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                            <select value={selectedDeckId} onChange={e => setSelectedDeckId(e.target.value)} style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}>
+                            <select 
+                                value={selectedDeckId} 
+                                onChange={e => {
+                                    if(e.target.value === "ADD_NEW") {
+                                        onOpenProfile(); // Open profile directly
+                                    } else {
+                                        setSelectedDeckId(e.target.value);
+                                    }
+                                }} 
+                                style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
+                            >
                                 <option value="">-- No Deck --</option>
-                                {user.decks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                                {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                                <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                             </select>
                             <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
                 ) : (
-                    <div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>No decks found. Please create one in your profile.</div>
+                    <div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>Login to use decks.</div>
                 )}
                 
                 <button onClick={handleConfirm} style={{padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px'}}>✅ Ready to Battle</button>
@@ -178,13 +197,13 @@ const DeckSelectionModal = ({ user, onConfirm }) => {
     );
 };
 
-// --- PROFILE SCREEN (UPDATED SORTING) ---
+// --- PROFILE SCREEN ---
 const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
     const [suggestions, setSuggestions] = useState([]);
     const [activeInput, setActiveInput] = useState(null); 
-    const [sortMethod, setSortMethod] = useState("name"); // "name" or "winrate"
+    const [sortMethod, setSortMethod] = useState("name");
 
     const handleSearch = async (val, field) => {
         if (field === 'commander') setCmdrName(val); else setPartnerName(val);
@@ -238,13 +257,12 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         } catch (err) { console.error(err); }
     };
 
-    // --- SORTING LOGIC ---
     const sortedDecks = [...(user.decks || [])].sort((a, b) => {
         if (sortMethod === 'name') return a.name.localeCompare(b.name);
         if (sortMethod === 'winrate') {
             const rateA = (a.wins + a.losses) > 0 ? (a.wins / (a.wins + a.losses)) : 0;
             const rateB = (b.wins + b.losses) > 0 ? (b.wins / (b.wins + b.losses)) : 0;
-            return rateB - rateA; // Descending
+            return rateB - rateA; 
         }
         return 0;
     });
@@ -260,8 +278,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 <div style={statBoxStyle}><h3>📊 Win Rate</h3><span>{user.stats.gamesPlayed > 0 ? Math.round((user.stats.wins / user.stats.gamesPlayed)*100) : 0}%</span></div>
             </div>
             <div style={{marginBottom: '40px'}}><button onClick={handleResetStats} style={{background: '#7f1d1d', color: '#fca5a5', border: '1px solid #991b1b', padding: '8px 16px', borderRadius: '4px', cursor: 'pointer', fontSize: '12px', fontWeight: 'bold'}}>⚠️ Reset Global Stats</button></div>
-            
-            {/* Sort Controls */}
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
                 <h2 style={{color: '#ccc', margin: 0}}>My Decks</h2>
                 <select value={sortMethod} onChange={(e) => setSortMethod(e.target.value)} style={{padding: '5px', background: '#333', color: 'white', border: '1px solid #555', borderRadius: '4px', outline: 'none'}}>
@@ -269,7 +285,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                     <option value="winrate">Sort by Win Rate (%)</option>
                 </select>
             </div>
-
             <div style={{background: '#222', padding: '15px', borderRadius: '8px', display: 'flex', gap: '10px', alignItems: 'center', marginBottom: '20px', border: '1px solid #444', flexWrap: 'wrap'}}>
                 <div style={{position: 'relative', flex: 1, minWidth: '200px'}}>
                     <input type="text" placeholder="Commander (Required)" value={cmdrName} onChange={e => handleSearch(e.target.value, 'commander')} style={{...inputStyle, width: '100%'}} />
@@ -281,8 +296,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
                 </div>
                 <button onClick={handleAddDeck} style={{padding: '8px 15px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '4px', cursor: 'pointer', fontWeight: 'bold'}}>+ Create Deck</button>
             </div>
-            
-            {/* Sorted Deck List */}
             <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(250px, 1fr))', gap: '20px'}}>
                 {sortedDecks.map(deck => (
                     <div key={deck._id} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', overflow: 'hidden', position: 'relative'}}>
@@ -300,7 +313,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY ---
+// --- LOBBY (UPDATED WITH SORT & ADD OPTION) ---
 const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -347,6 +360,9 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
   
   const handleSpectate = () => { if (previewStream) previewStream.getTracks().forEach(t => t.stop()); onJoin(true, null); };
 
+  // Sort Decks for Dropdown
+  const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
+
   if (step === 'mode') {
     return (
       <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
@@ -375,18 +391,33 @@ const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selected
         <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
       </div>
       <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        {user && user.decks && user.decks.length > 0 && (
+        
+        {user && user.decks && (
             <div>
                 <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                    <select value={selectedDeckId} onChange={e => onSelectDeck(e.target.value)} style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}>
+                    {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
+                    <select 
+                        value={selectedDeckId} 
+                        onChange={e => {
+                            if(e.target.value === "ADD_NEW") {
+                                onOpenProfile(); 
+                            } else {
+                                onSelectDeck(e.target.value);
+                            }
+                        }} 
+                        style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
+                    >
                         <option value="">-- No Deck --</option>
-                        {user.decks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                        {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
+                        <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                     </select>
+
                     <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                 </div>
             </div>
         )}
+
         <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Camera Source</label>
         <select value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)} style={{ padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none' }}>
             {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${device.deviceId.slice(0,5)}...`}</option>)}
@@ -1258,7 +1289,7 @@ function App() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
-      {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} onConfirm={handleDeckConfirm} />}
+      {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} onConfirm={handleDeckConfirm} onOpenProfile={() => setShowProfile(true)} />}
 
       {!hasJoined && (
         <Lobby 
