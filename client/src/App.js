@@ -232,7 +232,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); 
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                         setWasRandomlyPicked(false);
@@ -260,8 +260,8 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
     );
 };
 
-// --- PROFILE SCREEN ---
-const ProfileScreen = ({ user, token, onClose, onUpdateUser, onLogout }) => {
+// --- PROFILE SCREEN (UPDATED: NO LOGOUT BUTTON HERE) ---
+const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     const [cmdrName, setCmdrName] = useState("");
     const [partnerName, setPartnerName] = useState("");
     const [suggestions, setSuggestions] = useState([]);
@@ -335,9 +335,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser, onLogout }) => {
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
             
-            {/* LOGOUT BUTTON */}
-            <button onClick={onLogout} style={{position:'absolute', top: '20px', right: '130px', fontSize: '14px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '5px 10px', borderRadius: '4px'}}>🚪 Logout</button>
-
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -380,8 +377,8 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser, onLogout }) => {
     );
 };
 
-// --- LOBBY ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser }) => {
+// --- LOBBY (UPDATED: LOGOUT BUTTON ADDED) ---
+const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -482,6 +479,9 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
+                {/* --- LOGOUT BUTTON MOVED HERE --- */}
+                <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
+
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
                 <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
             </div>
@@ -1457,7 +1457,7 @@ function App() {
       `}</style>
 
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
-      {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} onLogout={handleLogout} />}
+      {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
       
       {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
@@ -1473,6 +1473,7 @@ function App() {
             onSelectDeck={setSelectedDeckId}
             selectedDeckId={selectedDeckId}
             onUpdateUser={setUser}
+            onLogout={handleLogout}
         />
       )}
 
