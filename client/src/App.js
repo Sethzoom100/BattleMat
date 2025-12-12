@@ -117,13 +117,17 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- GROUPS MODAL (NEW) ---
+// --- GROUPS MODAL (UPDATED WITH LEADERBOARD) ---
 const GroupsModal = ({ user, onClose, onUpdateUser }) => {
     const [view, setView] = useState('list'); // 'list' or 'detail'
-    const [selectedGroup, setSelectedGroup] = useState(null);
     const [newGroupName, setNewGroupName] = useState("");
     const [joinCode, setJoinCode] = useState("");
     const [groupDetails, setGroupDetails] = useState(null);
+    
+    // Leaderboard State
+    const [lbTimeframe, setLbTimeframe] = useState('all'); // 'all' or 'month'
+    const [lbType, setLbType] = useState('players'); // 'players' or 'decks'
+    const [leaderboardData, setLeaderboardData] = useState([]);
 
     const handleCreateGroup = async () => {
         if(!newGroupName) return;
@@ -155,14 +159,86 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
     };
 
     const openGroupDetail = async (group) => {
-        // Fetch fresh details (members)
         try {
             const res = await fetch(`${API_URL}/group-details/${group._id}`);
             const details = await res.json();
             setGroupDetails(details);
+            calculateLeaderboard(details, 'players', 'all'); // Initial Calc
             setView('detail');
         } catch(err) { console.error(err); }
     };
+
+    const calculateLeaderboard = (details, type, time) => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+
+        let data = [];
+
+        if (type === 'players') {
+            data = details.members.map(m => {
+                let wins = 0;
+                let games = 0;
+
+                if (time === 'all') {
+                    wins = m.stats.wins;
+                    games = m.stats.gamesPlayed;
+                } else {
+                    // Filter match history for this month
+                    const monthlyMatches = (m.matchHistory || []).filter(match => {
+                        const d = new Date(match.date);
+                        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                    });
+                    games = monthlyMatches.length;
+                    wins = monthlyMatches.filter(match => match.result === 'win').length;
+                }
+
+                return { name: m.username, wins, games, winRate: games > 0 ? (wins/games) : 0 };
+            });
+        } else {
+            // DECKS LEADERBOARD
+            let allDecks = [];
+            details.members.forEach(m => {
+                m.decks.forEach(d => {
+                    let wins = 0;
+                    let games = 0;
+
+                    if (time === 'all') {
+                        wins = d.wins;
+                        games = d.wins + d.losses;
+                    } else {
+                        const deckMatches = (m.matchHistory || []).filter(match => {
+                            const date = new Date(match.date);
+                            return match.deckId === d._id && date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+                        });
+                        games = deckMatches.length;
+                        wins = deckMatches.filter(match => match.result === 'win').length;
+                    }
+
+                    if (games > 0) {
+                        allDecks.push({ 
+                            name: d.name, 
+                            owner: m.username, 
+                            wins, 
+                            games, 
+                            winRate: (wins/games) 
+                        });
+                    }
+                });
+            });
+            data = allDecks;
+        }
+
+        // Sort by Win Rate (descending), then Wins
+        data.sort((a,b) => b.winRate - a.winRate || b.wins - a.wins);
+        setLeaderboardData(data);
+    };
+
+    // React to toggle changes
+    useEffect(() => {
+        if(groupDetails) calculateLeaderboard(groupDetails, lbType, lbTimeframe);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [lbType, lbTimeframe]);
 
     const copyInvite = () => {
         if(groupDetails) {
@@ -212,20 +288,47 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             {view === 'detail' && groupDetails && (
                 <div>
                     <button onClick={() => setView('list')} style={{background: 'transparent', border:'none', color:'#aaa', cursor:'pointer', marginBottom:'10px'}}>← Back to List</button>
-                    <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
-                    <div style={{marginBottom:'20px', color:'#666', fontSize:'14px'}}>Code: {groupDetails.code}</div>
-                    
-                    <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'10px 20px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold', marginBottom:'30px'}}>🔗 Invite (Copy Code)</button>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #333', paddingBottom:'10px', marginBottom:'20px'}}>
+                        <div>
+                            <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
+                            <div style={{color:'#666', fontSize:'14px', marginTop:'5px'}}>Code: <span style={{color:'#fff', fontWeight:'bold'}}>{groupDetails.code}</span></div>
+                        </div>
+                        <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'10px 20px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
+                    </div>
 
-                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px'}}>
-                        {groupDetails.members.map(m => (
-                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333'}}>
-                                <div style={{fontWeight:'bold'}}>{m.username}</div>
-                                <div style={{fontSize:'12px', color:'#888'}}>Wins: {m.stats?.wins || 0} | Games: {m.stats?.gamesPlayed || 0}</div>
+                    {/* --- LEADERBOARD CONTROLS --- */}
+                    <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
+                        <div style={{display:'flex', background:'#333', borderRadius:'4px', padding:'2px'}}>
+                            <button onClick={() => setLbType('players')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'players' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Players</button>
+                            <button onClick={() => setLbType('decks')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'decks' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Decks</button>
+                        </div>
+                        <select value={lbTimeframe} onChange={e => setLbTimeframe(e.target.value)} style={{padding:'6px', borderRadius:'4px', background:'#333', color:'white', border:'1px solid #555', outline:'none'}}>
+                            <option value="all">All Time</option>
+                            <option value="month">This Month</option>
+                        </select>
+                    </div>
+
+                    {/* --- LEADERBOARD TABLE --- */}
+                    <div style={{background:'#1a1a1a', border:'1px solid #333', borderRadius:'8px', overflow:'hidden'}}>
+                        <div style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', background:'#222', padding:'10px', fontWeight:'bold', fontSize:'12px', color:'#aaa'}}>
+                            <div>{lbType === 'players' ? 'PLAYER' : 'DECK'}</div>
+                            {lbType === 'decks' && <div>OWNER</div>}
+                            <div style={{textAlign:'center'}}>WINS</div>
+                            <div style={{textAlign:'center'}}>GAMES</div>
+                            <div style={{textAlign:'right'}}>WIN RATE</div>
+                        </div>
+                        {leaderboardData.length === 0 && <div style={{padding:'20px', textAlign:'center', color:'#666'}}>No stats recorded for this period.</div>}
+                        {leaderboardData.map((row, i) => (
+                            <div key={i} style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', padding:'12px 10px', borderBottom:'1px solid #333', alignItems:'center'}}>
+                                <div style={{fontWeight:'bold'}}>{i+1}. {row.name}</div>
+                                {lbType === 'decks' && <div style={{fontSize:'12px', color:'#888'}}>{row.owner}</div>}
+                                <div style={{textAlign:'center', color:'#22c55e'}}>{row.wins}</div>
+                                <div style={{textAlign:'center'}}>{row.games}</div>
+                                <div style={{textAlign:'right'}}>{Math.round(row.winRate * 100)}%</div>
                             </div>
                         ))}
                     </div>
+
                 </div>
             )}
         </div>
@@ -502,7 +605,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
 };
 
 // --- LOBBY (UPDATED: LOGOUT BUTTON ADDED) ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onOpenGroups, onSelectDeck, selectedDeckId, onUpdateUser, onLogout }) => {
+const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout, onOpenGroups }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -1021,6 +1124,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                                 <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
                                 <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                                 <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
+                                
+                                {/* REMOVED WIN/LOSS BUTTONS AS REQUESTED */}
                                 
                                 <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
                                 <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
@@ -1598,16 +1703,10 @@ function App() {
         });
     });
 
-    // --- HOST UPDATE HANDLER ---
-    socket.on('host-update', (newHostId) => {
-        setHostId(newHostId);
-    });
-
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
       socket.off('full-state-sync'); socket.off('status-claimed');
-      socket.off('host-update');
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1622,9 +1721,6 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
-
-  // --- IS HOST? ---
-  const isHost = myId === hostId;
 
   return (
     <>
