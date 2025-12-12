@@ -117,6 +117,122 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
+// --- GROUPS MODAL (NEW) ---
+const GroupsModal = ({ user, onClose, onUpdateUser }) => {
+    const [view, setView] = useState('list'); // 'list' or 'detail'
+    const [selectedGroup, setSelectedGroup] = useState(null);
+    const [newGroupName, setNewGroupName] = useState("");
+    const [joinCode, setJoinCode] = useState("");
+    const [groupDetails, setGroupDetails] = useState(null);
+
+    const handleCreateGroup = async () => {
+        if(!newGroupName) return;
+        try {
+            const res = await fetch(`${API_URL}/create-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, name: newGroupName })
+            });
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setNewGroupName("");
+        } catch (err) { alert("Error creating group"); }
+    };
+
+    const handleJoinGroup = async () => {
+        if(!joinCode) return;
+        try {
+            const res = await fetch(`${API_URL}/join-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, code: joinCode.toUpperCase() })
+            });
+            if(!res.ok) throw new Error("Invalid Code or Already Joined");
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setJoinCode("");
+        } catch (err) { alert(err.message); }
+    };
+
+    const openGroupDetail = async (group) => {
+        // Fetch fresh details (members)
+        try {
+            const res = await fetch(`${API_URL}/group-details/${group._id}`);
+            const details = await res.json();
+            setGroupDetails(details);
+            setView('detail');
+        } catch(err) { console.error(err); }
+    };
+
+    const copyInvite = () => {
+        if(groupDetails) {
+            navigator.clipboard.writeText(groupDetails.code);
+            alert("Group Code Copied: " + groupDetails.code);
+        }
+    };
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
+            <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
+            
+            {view === 'list' && (
+                <>
+                    <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>My Groups</h1>
+                    
+                    <div style={{display:'flex', gap:'20px', marginBottom:'30px', flexWrap:'wrap'}}>
+                        {/* Create */}
+                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
+                            <h3 style={{marginTop:0}}>Create Group</h3>
+                            <div style={{display:'flex', gap:'5px'}}>
+                                <input type="text" placeholder="Group Name" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} style={{...inputStyle, flex:1}} />
+                                <button onClick={handleCreateGroup} style={{background:'#2563eb', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Create</button>
+                            </div>
+                        </div>
+                        {/* Join */}
+                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
+                            <h3 style={{marginTop:0}}>Join Group</h3>
+                            <div style={{display:'flex', gap:'5px'}}>
+                                <input type="text" placeholder="Enter Code (6 chars)" value={joinCode} onChange={e => setJoinCode(e.target.value)} style={{...inputStyle, flex:1, textTransform:'uppercase'}} maxLength={6} />
+                                <button onClick={handleJoinGroup} style={{background:'#16a34a', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Join</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px'}}>
+                        {user.groups && user.groups.map(g => (
+                            <div key={g._id} onClick={() => openGroupDetail(g)} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', padding: '20px', cursor:'pointer', textAlign:'center'}}>
+                                <div style={{fontSize:'18px', fontWeight:'bold', marginBottom:'5px'}}>{g.name}</div>
+                                <div style={{fontSize:'12px', color:'#666'}}>Click to view</div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            {view === 'detail' && groupDetails && (
+                <div>
+                    <button onClick={() => setView('list')} style={{background: 'transparent', border:'none', color:'#aaa', cursor:'pointer', marginBottom:'10px'}}>← Back to List</button>
+                    <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
+                    <div style={{marginBottom:'20px', color:'#666', fontSize:'14px'}}>Code: {groupDetails.code}</div>
+                    
+                    <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'10px 20px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold', marginBottom:'30px'}}>🔗 Invite (Copy Code)</button>
+
+                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px'}}>
+                        {groupDetails.members.map(m => (
+                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333'}}>
+                                <div style={{fontWeight:'bold'}}>{m.username}</div>
+                                <div style={{fontSize:'12px', color:'#888'}}>Wins: {m.stats?.wins || 0} | Games: {m.stats?.gamesPlayed || 0}</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+
 // --- FINISH GAME MODAL ---
 const FinishGameModal = ({ players, onFinish, onClose }) => {
     const [winnerId, setWinnerId] = useState(null);
@@ -343,7 +459,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
-            
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -387,7 +502,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
 };
 
 // --- LOBBY (UPDATED: LOGOUT BUTTON ADDED) ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout }) => {
+const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onOpenGroups, onSelectDeck, selectedDeckId, onUpdateUser, onLogout }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
@@ -492,7 +607,11 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                 <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
 
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
-                <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
+                <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
+                    <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
+                    {/* --- GROUPS BUTTON --- */}
+                    <button onClick={onOpenGroups} style={{padding: '8px 16px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👥 Groups</button>
+                </div>
             </div>
         ) : (
             <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
@@ -983,6 +1102,7 @@ function App() {
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
   const [showHistory, setShowHistory] = useState(false); 
+  const [showGroups, setShowGroups] = useState(false); // NEW STATE for Groups
   
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
@@ -1094,27 +1214,17 @@ function App() {
   const handleLeaveGame = () => {
       if(!window.confirm("Leave current game?")) return;
       
-      // 1. Stop all tracks in the local stream
-      if (streamRef.current) {
-          streamRef.current.getTracks().forEach(track => track.stop());
+      if(streamRef.current) {
+          streamRef.current.getTracks().forEach(t => t.stop());
       }
       
-      // 2. Destroy the PeerJS connection
-      if (peerRef.current) {
+      if(peerRef.current) {
           peerRef.current.destroy();
       }
       
-      // 3. Clear all connection-related state and refs
-      setMyStream(null);
-      streamRef.current = null;
-      setPeers([]);
-      peersRef.current = {};
-      
-      // 4. Force disconnect socket to notify server, then reconnect for lobby
       socket.disconnect();
       socket.connect();
       
-      // 5. Reset UI state
       setHasJoined(false);
       setGameState({});
       setSeatOrder([]);
@@ -1512,7 +1622,7 @@ function App() {
 
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
-  
+
   // --- IS HOST? ---
   const isHost = myId === hostId;
 
@@ -1529,6 +1639,10 @@ function App() {
       {showAuthModal && <AuthModal onClose={() => setShowAuthModal(false)} onLogin={(u, t) => { setUser(u); setToken(t); }} />}
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
+      
+      {showGroups && user && <GroupsModal user={user} onClose={() => setShowGroups(false)} onUpdateUser={setUser} />}
+
+      {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
 
       {!hasJoined && (
@@ -1542,6 +1656,7 @@ function App() {
             selectedDeckId={selectedDeckId}
             onUpdateUser={setUser}
             onLogout={handleLogout}
+            onOpenGroups={() => setShowGroups(true)}
         />
       )}
 
