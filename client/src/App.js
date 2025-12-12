@@ -380,7 +380,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser, onLogout }) => {
     );
 };
 
-// --- LOBBY (UPDATED: JOIN BUTTON DISABLED IF NO USER) ---
+// --- LOBBY ---
 const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -982,6 +982,24 @@ function App() {
   useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
   useEffect(() => { cameraRatioRef.current = cameraRatio; }, [cameraRatio]);
+
+  // --- AUTO LOGIN ---
+  useEffect(() => {
+    const savedToken = localStorage.getItem('battlemat_token');
+    const savedUser = localStorage.getItem('battlemat_user');
+    if (savedToken && savedUser) {
+        setToken(savedToken);
+        setUser(JSON.parse(savedUser));
+    }
+  }, []);
+
+  const handleLogout = () => {
+    localStorage.removeItem('battlemat_token');
+    localStorage.removeItem('battlemat_user');
+    setUser(null);
+    setToken(null);
+    setShowProfile(false);
+  };
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
