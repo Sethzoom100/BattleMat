@@ -24,7 +24,11 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 const server = createServer(app);
-const io = new Server(server, { cors: corsOptions });
+const io = new Server(server, { 
+    cors: corsOptions,
+    pingTimeout: 60000, // Increase timeout to prevent random disconnects
+    pingInterval: 25000 
+});
 
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
@@ -34,7 +38,7 @@ if (MONGO_URI) {
     console.log('⚠️ No MONGO_URI found. Database features will not work.');
 }
 
-// --- ROUTES ---
+// --- ROUTES (Keep existing routes as they were) ---
 
 const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
@@ -48,7 +52,7 @@ app.get('/user/:id', async (req, res) => {
             stats: user.stats, 
             decks: user.decks, 
             deckCycleHistory: user.deckCycleHistory,
-            groups: user.groups 
+            groups: user.groups
         });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -264,43 +268,58 @@ const socketToRoom = {};
 const socketToUser = {};
 const socketIsSpectator = {}; 
 const roomHosts = {}; 
+// NEW: SERVER-SIDE STATE STORAGE TO PREVENT DESYNC
+const roomData = {}; // Format: { roomId: { gameState: {}, turnState: {} } }
 
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
 io.on('connection', (socket) => {
     
-    socket.on('join-room', (roomId, userId, isSpectator) => {
+    socket.on('join-room', async (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
         socketToUser[socket.id] = userId;
         socketIsSpectator[socket.id] = isSpectator;
         
-        // --- STRICT HOST ASSIGNMENT LOGIC ---
+        // 1. Initialize Room Data if missing
+        if (!roomData[roomId]) {
+            roomData[roomId] = { gameState: {}, turnState: { activeId: null, count: 1 } };
+        }
+
+        // 2. Determine Host
         let currentHostId = roomHosts[roomId];
-        
-        // Use Synchronous Adapter to check room presence immediately
         const roomSockets = io.sockets.adapter.rooms.get(roomId);
         let hostIsHere = false;
+        
+        // Collect all active User IDs in room to send to new joiner (MESH REPAIR)
+        const activeUsers = [];
 
-        if (currentHostId && roomSockets) {
+        if (roomSockets) {
             for (const sockId of roomSockets) {
-                if (socketToUser[sockId] === currentHostId) {
-                    hostIsHere = true;
-                    break;
-                }
+                const uId = socketToUser[sockId];
+                if (uId) activeUsers.push(uId);
+                if (uId === currentHostId) hostIsHere = true;
             }
         }
 
-        // Assign Host if none exists or current one is gone
         if ((!currentHostId || !hostIsHere) && !isSpectator) {
             roomHosts[roomId] = userId;
             currentHostId = userId;
-            console.log(`Room ${roomId}: Host assigned to ${userId}`);
         }
 
-        // Broadcast definitively to everyone in room (including self)
+        // 3. Send Critical Data to the NEW User
+        //    a) Who the host is
+        //    b) The current game state (so they don't see default 40 life)
+        //    c) The list of all users (so they can initiate calls)
         io.to(roomId).emit('host-update', currentHostId);
+        
+        // Send state ONLY to the new person joining to catch them up
+        socket.emit('sync-state', roomData[roomId]);
+        
+        // Send list of existing users to new person so they can CALL them
+        socket.emit('all-users', activeUsers.filter(id => id !== userId));
 
+        // 4. Announce new user to others (Standard WebRTC signal)
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
 
@@ -311,17 +330,30 @@ io.on('connection', (socket) => {
 
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
-        if (roomId) socket.to(roomId).emit('game-state-updated', { userId, data });
+        if (roomId) {
+            // Update Server Memory
+            if (!roomData[roomId].gameState[userId]) roomData[roomId].gameState[userId] = {};
+            roomData[roomId].gameState[userId] = { ...roomData[roomId].gameState[userId], ...data };
+            
+            // Broadcast
+            socket.to(roomId).emit('game-state-updated', { userId, data });
+        }
     });
 
     socket.on('update-turn-state', (newState) => {
         const roomId = socketToRoom[socket.id];
-        if (roomId) io.to(roomId).emit('turn-state-updated', newState);
+        if (roomId) {
+            roomData[roomId].turnState = newState; // Save to memory
+            io.to(roomId).emit('turn-state-updated', newState);
+        }
     });
     
     socket.on('reset-game-request', (data) => {
         const roomId = socketToRoom[socket.id];
-        if (roomId) io.to(roomId).emit('game-reset', data);
+        if (roomId) {
+            roomData[roomId] = data; // Reset server memory
+            io.to(roomId).emit('game-reset', data);
+        }
     });
     
     socket.on('update-seat-order', (newOrder) => {
@@ -336,20 +368,20 @@ io.on('connection', (socket) => {
         if (roomId && userId) {
             socket.to(roomId).emit('user-disconnected', userId); 
             
-            // --- HOST MIGRATION ---
+            // Remove user data from memory if needed, but usually keep it in case of reconnect
+            // delete roomData[roomId].gameState[userId]; 
+
             if (roomHosts[roomId] === userId) {
                 const roomSockets = io.sockets.adapter.rooms.get(roomId);
                 let newHostFound = false;
 
                 if (roomSockets) {
                     for (const socketId of roomSockets) {
-                        // Pick next available player (not self, not spectator)
                         if (socketId !== socket.id && !socketIsSpectator[socketId]) {
                             const newHostId = socketToUser[socketId];
                             if (newHostId) {
                                 roomHosts[roomId] = newHostId;
                                 io.to(roomId).emit('host-update', newHostId);
-                                console.log(`Room ${roomId}: Host migrated to ${newHostId}`);
                                 newHostFound = true;
                                 break; 
                             }
@@ -358,8 +390,9 @@ io.on('connection', (socket) => {
                 }
 
                 if (!newHostFound) {
-                    console.log(`Room ${roomId}: No host remaining.`);
                     delete roomHosts[roomId];
+                    // Optional: Clean up room data if empty
+                    // delete roomData[roomId];
                 }
             }
         }
