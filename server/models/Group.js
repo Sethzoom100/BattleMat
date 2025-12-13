@@ -2,8 +2,9 @@ const mongoose = require('mongoose');
 
 const GroupSchema = new mongoose.Schema({
   name: { type: String, required: true },
-  code: { type: String, required: true, unique: true }, // Unique 6-digit code
-  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // List of users
+  code: { type: String, required: true, unique: true }, 
+  members: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }],
+  admins: [{ type: mongoose.Schema.Types.ObjectId, ref: 'User' }], // --- NEW: Admin List
   createdAt: { type: Date, default: Date.now }
 });
 
