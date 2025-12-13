@@ -4,7 +4,11 @@ import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
 const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
-const socket = io(API_URL);
+const socket = io(API_URL, {
+    reconnection: true,
+    reconnectionAttempts: 10,
+    reconnectionDelay: 1000
+});
 
 // --- ASSETS ---
 const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
@@ -93,10 +97,8 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
-                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -119,14 +121,12 @@ const AuthModal = ({ onClose, onLogin }) => {
 
 // --- GROUPS MODAL ---
 const GroupsModal = ({ user, onClose, onUpdateUser }) => {
-    const [view, setView] = useState('list'); // 'list' or 'detail'
+    const [view, setView] = useState('list');
     const [newGroupName, setNewGroupName] = useState("");
     const [joinCode, setJoinCode] = useState("");
     const [groupDetails, setGroupDetails] = useState(null);
-    
-    // Leaderboard State
-    const [lbTimeframe, setLbTimeframe] = useState('all'); // 'all' or 'month'
-    const [lbType, setLbType] = useState('players'); // 'players' or 'decks'
+    const [lbTimeframe, setLbTimeframe] = useState('all');
+    const [lbType, setLbType] = useState('players');
     const [leaderboardData, setLeaderboardData] = useState([]);
 
     const handleCreateGroup = async () => {
@@ -163,7 +163,7 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             const res = await fetch(`${API_URL}/group-details/${group._id}`);
             const details = await res.json();
             setGroupDetails(details);
-            calculateLeaderboard(details, 'players', 'all'); // Initial Calc
+            calculateLeaderboard(details, 'players', 'all');
             setView('detail');
         } catch(err) { console.error(err); }
     };
@@ -172,19 +172,16 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
         const now = new Date();
         const currentMonth = now.getMonth();
         const currentYear = now.getFullYear();
-
         let data = [];
 
         if (type === 'players') {
             data = details.members.map(m => {
                 let wins = 0;
                 let games = 0;
-
                 if (time === 'all') {
                     wins = m.stats.wins;
                     games = m.stats.gamesPlayed;
                 } else {
-                    // Filter match history for this month
                     const monthlyMatches = (m.matchHistory || []).filter(match => {
                         const d = new Date(match.date);
                         return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
@@ -192,17 +189,14 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                     games = monthlyMatches.length;
                     wins = monthlyMatches.filter(match => match.result === 'win').length;
                 }
-
                 return { name: m.username, wins, games, winRate: games > 0 ? (wins/games) : 0 };
             });
         } else {
-            // DECKS LEADERBOARD
             let allDecks = [];
             details.members.forEach(m => {
                 m.decks.forEach(d => {
                     let wins = 0;
                     let games = 0;
-
                     if (time === 'all') {
                         wins = d.wins;
                         games = d.wins + d.losses;
@@ -214,7 +208,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                         games = deckMatches.length;
                         wins = deckMatches.filter(match => match.result === 'win').length;
                     }
-
                     if (games > 0) {
                         allDecks.push({ 
                             name: d.name, 
@@ -229,16 +222,13 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             data = allDecks;
         }
 
-        // Sort by Win Rate (descending), then Wins
         data.sort((a,b) => b.winRate - a.winRate || b.wins - a.wins);
         setLeaderboardData(data);
     };
 
-    // React to toggle changes
     useEffect(() => {
         if(groupDetails) calculateLeaderboard(groupDetails, lbType, lbTimeframe);
-        // eslint-disable-next-line react-hooks/exhaustive-deps
-    }, [lbType, lbTimeframe]);
+    }, [lbType, lbTimeframe, groupDetails]);
 
     const copyInvite = () => {
         if(groupDetails) {
@@ -254,9 +244,7 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             {view === 'list' && (
                 <>
                     <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>My Groups</h1>
-                    
                     <div style={{display:'flex', gap:'20px', marginBottom:'30px', flexWrap:'wrap'}}>
-                        {/* Create */}
                         <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
                             <h3 style={{marginTop:0}}>Create Group</h3>
                             <div style={{display:'flex', gap:'5px'}}>
@@ -264,7 +252,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                                 <button onClick={handleCreateGroup} style={{background:'#2563eb', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Create</button>
                             </div>
                         </div>
-                        {/* Join */}
                         <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
                             <h3 style={{marginTop:0}}>Join Group</h3>
                             <div style={{display:'flex', gap:'5px'}}>
@@ -273,7 +260,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                             </div>
                         </div>
                     </div>
-
                     <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px'}}>
                         {user.groups && user.groups.map(g => (
                             <div key={g._id} onClick={() => openGroupDetail(g)} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', padding: '20px', cursor:'pointer', textAlign:'center'}}>
@@ -296,7 +282,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                         <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'10px 20px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
                     </div>
 
-                    {/* --- LEADERBOARD CONTROLS --- */}
                     <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
                         <div style={{display:'flex', background:'#333', borderRadius:'4px', padding:'2px'}}>
                             <button onClick={() => setLbType('players')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'players' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Players</button>
@@ -308,7 +293,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                         </select>
                     </div>
 
-                    {/* --- LEADERBOARD TABLE --- */}
                     <div style={{background:'#1a1a1a', border:'1px solid #333', borderRadius:'8px', overflow:'hidden'}}>
                         <div style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', background:'#222', padding:'10px', fontWeight:'bold', fontSize:'12px', color:'#aaa'}}>
                             <div>{lbType === 'players' ? 'PLAYER' : 'DECK'}</div>
@@ -328,7 +312,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                             </div>
                         ))}
                     </div>
-
                 </div>
             )}
         </div>
@@ -365,18 +348,14 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
 const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUser }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
-    
-    // Random State
     const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
     const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
     const [resetCycle, setResetCycle] = useState(false);
 
     const handleRandom = () => {
         if (!user || !user.decks || user.decks.length === 0) return;
-        
         let pool = [...user.decks];
         let willReset = false;
-
         if (useCycle && user.deckCycleHistory) {
             const playedIds = user.deckCycleHistory;
             const remaining = pool.filter(d => !playedIds.includes(d._id));
@@ -388,10 +367,8 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                 pool = remaining;
             }
         }
-
         const randomIndex = Math.floor(Math.random() * pool.length);
         const randomDeck = pool[randomIndex];
-        
         setSelectedDeckId(randomDeck._id);
         setWasRandomlyPicked(true);
         setResetCycle(willReset);
@@ -402,7 +379,6 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
             onOpenProfile();
             return;
         }
-
         if (wasRandomlyPicked && useCycle) {
             try {
                 const res = await fetch(`${API_URL}/record-deck-usage`, {
@@ -414,7 +390,6 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                 onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
             } catch (err) { console.error("Failed to update deck cycle", err); }
         }
-
         let deckData = null;
         if (user && user.decks && selectedDeckId) {
             const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -434,53 +409,26 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 200000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '350px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>Next Game Setup</h2>
-                
                 {user ? (
                     <div>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
                              <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                              <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                <input 
-                                    type="checkbox" 
-                                    checked={useCycle} 
-                                    onChange={e => {
-                                        setUseCycle(e.target.checked);
-                                        localStorage.setItem('battlemat_use_cycle', e.target.checked);
-                                    }} 
-                                    id="cycleCheckModal" 
-                                    style={{cursor:'pointer'}} 
-                                />
+                                <input type="checkbox" checked={useCycle} onChange={e => {setUseCycle(e.target.checked); localStorage.setItem('battlemat_use_cycle', e.target.checked);}} id="cycleCheckModal" style={{cursor:'pointer'}} />
                                 <label htmlFor="cycleCheckModal" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
                              </div>
                         </div>
-
                         <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                            <select 
-                                value={selectedDeckId} 
-                                onChange={e => {
-                                    if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // This is handled by the parent to close this modal too
-                                    } else {
-                                        setSelectedDeckId(e.target.value);
-                                        setWasRandomlyPicked(false);
-                                    }
-                                }} 
-                                style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
-                            >
+                            <select value={selectedDeckId} onChange={e => { if(e.target.value === "ADD_NEW") { onOpenProfile(); } else { setSelectedDeckId(e.target.value); setWasRandomlyPicked(false); } }} style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}>
                                 <option value="">-- No Deck --</option>
                                 {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                                 <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                             </select>
-                            
                             <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
-                            
                             <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
-                ) : (
-                    <div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>Login to use decks.</div>
-                )}
-                
+                ) : (<div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>Login to use decks.</div>)}
                 <button onClick={handleConfirm} style={{padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px'}}>✅ Ready to Battle</button>
             </div>
         </div>
@@ -1742,8 +1690,6 @@ function App() {
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
       
-      {showGroups && user && <GroupsModal user={user} onClose={() => setShowGroups(false)} onUpdateUser={setUser} />}
-
       {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
 
