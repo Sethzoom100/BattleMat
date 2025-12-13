@@ -4,11 +4,7 @@ import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
 const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
-const socket = io(API_URL, {
-    reconnection: true,
-    reconnectionAttempts: 10,
-    reconnectionDelay: 1000
-});
+const socket = io(API_URL);
 
 // --- ASSETS ---
 const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
@@ -97,8 +93,10 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
+                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
+                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -119,7 +117,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- GROUPS MODAL ---
+// --- GROUPS MODAL (UPDATED WITH ADMIN) ---
 const GroupsModal = ({ user, onClose, onUpdateUser }) => {
     const [view, setView] = useState('list');
     const [newGroupName, setNewGroupName] = useState("");
@@ -166,6 +164,39 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             calculateLeaderboard(details, 'players', 'all');
             setView('detail');
         } catch(err) { console.error(err); }
+    };
+    
+    // --- NEW: HANDLE LEAVE ---
+    const handleLeave = async () => {
+        if(!window.confirm("Are you sure you want to leave this group?")) return;
+        try {
+            const res = await fetch(`${API_URL}/leave-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, groupId: groupDetails._id })
+            });
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setView('list'); // Go back to list
+        } catch (err) { alert("Error leaving group"); }
+    };
+
+    // --- NEW: HANDLE KICK (Admin) ---
+    const handleKick = async (targetId) => {
+        if(!window.confirm("Kick this user?")) return;
+        try {
+            const res = await fetch(`${API_URL}/kick-member`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requesterId: user.id, targetId, groupId: groupDetails._id })
+            });
+            if (!res.ok) throw new Error("Failed to kick");
+            // Refresh details locally
+            const updatedMembers = groupDetails.members.filter(m => m._id !== targetId);
+            const updatedDetails = { ...groupDetails, members: updatedMembers };
+            setGroupDetails(updatedDetails);
+            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); // Recalc stats
+        } catch (err) { alert(err.message); }
     };
 
     const calculateLeaderboard = (details, type, time) => {
@@ -236,6 +267,9 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             alert("Group Code Copied: " + groupDetails.code);
         }
     };
+    
+    // Check if current user is admin of this group
+    const isAdmin = groupDetails && groupDetails.admins && groupDetails.admins.includes(user.id);
 
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
@@ -279,7 +313,24 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                             <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
                             <div style={{color:'#666', fontSize:'14px', marginTop:'5px'}}>Code: <span style={{color:'#fff', fontWeight:'bold'}}>{groupDetails.code}</span></div>
                         </div>
-                        <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'10px 20px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
+                        <div style={{display:'flex', gap:'10px'}}>
+                            <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
+                            <button onClick={handleLeave} style={{background: '#ef4444', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🚪 Leave Group</button>
+                        </div>
+                    </div>
+
+                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px', marginBottom:'30px'}}>
+                        {groupDetails.members.map(m => (
+                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                <div>
+                                    <div style={{fontWeight:'bold'}}>{m.username} {(groupDetails.admins || []).includes(m._id) && <span style={{color:'#facc15', fontSize:'10px'}}>(Admin)</span>}</div>
+                                </div>
+                                {isAdmin && m._id !== user.id && (
+                                    <button onClick={(e) => { e.stopPropagation(); handleKick(m._id); }} style={{background:'transparent', border:'1px solid #ef4444', color:'#ef4444', cursor:'pointer', padding:'2px 6px', borderRadius:'4px', fontSize:'10px'}}>Kick</button>
+                                )}
+                            </div>
+                        ))}
                     </div>
 
                     <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
@@ -348,14 +399,18 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
 const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUser }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
+    
+    // Random State
     const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
     const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
     const [resetCycle, setResetCycle] = useState(false);
 
     const handleRandom = () => {
         if (!user || !user.decks || user.decks.length === 0) return;
+        
         let pool = [...user.decks];
         let willReset = false;
+
         if (useCycle && user.deckCycleHistory) {
             const playedIds = user.deckCycleHistory;
             const remaining = pool.filter(d => !playedIds.includes(d._id));
@@ -367,8 +422,10 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                 pool = remaining;
             }
         }
+
         const randomIndex = Math.floor(Math.random() * pool.length);
         const randomDeck = pool[randomIndex];
+        
         setSelectedDeckId(randomDeck._id);
         setWasRandomlyPicked(true);
         setResetCycle(willReset);
@@ -379,6 +436,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
             onOpenProfile();
             return;
         }
+
         if (wasRandomlyPicked && useCycle) {
             try {
                 const res = await fetch(`${API_URL}/record-deck-usage`, {
@@ -390,6 +448,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                 onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
             } catch (err) { console.error("Failed to update deck cycle", err); }
         }
+
         let deckData = null;
         if (user && user.decks && selectedDeckId) {
             const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -409,26 +468,53 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.95)', zIndex: 200000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
             <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '350px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '20px' }}>
                 <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>Next Game Setup</h2>
+                
                 {user ? (
                     <div>
                         <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
                              <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                              <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                <input type="checkbox" checked={useCycle} onChange={e => {setUseCycle(e.target.checked); localStorage.setItem('battlemat_use_cycle', e.target.checked);}} id="cycleCheckModal" style={{cursor:'pointer'}} />
+                                <input 
+                                    type="checkbox" 
+                                    checked={useCycle} 
+                                    onChange={e => {
+                                        setUseCycle(e.target.checked);
+                                        localStorage.setItem('battlemat_use_cycle', e.target.checked);
+                                    }} 
+                                    id="cycleCheckModal" 
+                                    style={{cursor:'pointer'}} 
+                                />
                                 <label htmlFor="cycleCheckModal" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
                              </div>
                         </div>
+
                         <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
-                            <select value={selectedDeckId} onChange={e => { if(e.target.value === "ADD_NEW") { onOpenProfile(); } else { setSelectedDeckId(e.target.value); setWasRandomlyPicked(false); } }} style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}>
+                            <select 
+                                value={selectedDeckId} 
+                                onChange={e => {
+                                    if(e.target.value === "ADD_NEW") {
+                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                    } else {
+                                        setSelectedDeckId(e.target.value);
+                                        setWasRandomlyPicked(false);
+                                    }
+                                }} 
+                                style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
+                            >
                                 <option value="">-- No Deck --</option>
                                 {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                                 <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                             </select>
+                            
                             <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
+                            
                             <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
-                ) : (<div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>Login to use decks.</div>)}
+                ) : (
+                    <div style={{color: '#aaa', textAlign: 'center', fontSize: '14px'}}>Login to use decks.</div>
+                )}
+                
                 <button onClick={handleConfirm} style={{padding: '12px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold', fontSize: '16px'}}>✅ Ready to Battle</button>
             </div>
         </div>
@@ -1674,7 +1760,7 @@ function App() {
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
 
   // --- IS HOST? ---
-  const isHost = myId === hostId;
+  const isHost = myId === hostId; // --- THIS WAS THE MISSING LINE
 
   return (
     <>
@@ -1690,6 +1776,8 @@ function App() {
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
       
+      {showGroups && user && <GroupsModal user={user} onClose={() => setShowGroups(false)} onUpdateUser={setUser} />}
+
       {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
 
