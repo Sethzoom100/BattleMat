@@ -88,18 +88,8 @@ const AuthModal = ({ onClose, onLogin }) => {
             });
             const data = await res.json();
             if (!res.ok) throw new Error(data.msg);
-            
-            if (isRegister) { 
-                setIsRegister(false); 
-                alert("Account created! Log in."); 
-            } else { 
-                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
-                localStorage.setItem('battlemat_token', data.token);
-                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                
-                onLogin(data.user, data.token); 
-                onClose(); 
-            }
+            if (isRegister) { setIsRegister(false); alert("Account created! Log in."); }
+            else { onLogin(data.user, data.token); onClose(); }
         } catch (err) { alert(err.message); }
     };
 
@@ -113,258 +103,6 @@ const AuthModal = ({ onClose, onLogin }) => {
                 <div style={{fontSize: '12px', textAlign: 'center', cursor: 'pointer', color: '#aaa'}} onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Have account? Login" : "No account? Create one"}</div>
                 <button onClick={onClose} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px'}}>Cancel</button>
             </div>
-        </div>
-    );
-};
-
-// --- GROUPS MODAL (UPDATED WITH ADMIN) ---
-const GroupsModal = ({ user, onClose, onUpdateUser }) => {
-    const [view, setView] = useState('list');
-    const [newGroupName, setNewGroupName] = useState("");
-    const [joinCode, setJoinCode] = useState("");
-    const [groupDetails, setGroupDetails] = useState(null);
-    const [lbTimeframe, setLbTimeframe] = useState('all');
-    const [lbType, setLbType] = useState('players');
-    const [leaderboardData, setLeaderboardData] = useState([]);
-
-    const handleCreateGroup = async () => {
-        if(!newGroupName) return;
-        try {
-            const res = await fetch(`${API_URL}/create-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, name: newGroupName })
-            });
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setNewGroupName("");
-        } catch (err) { alert("Error creating group"); }
-    };
-
-    const handleJoinGroup = async () => {
-        if(!joinCode) return;
-        try {
-            const res = await fetch(`${API_URL}/join-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, code: joinCode.toUpperCase() })
-            });
-            if(!res.ok) throw new Error("Invalid Code or Already Joined");
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setJoinCode("");
-        } catch (err) { alert(err.message); }
-    };
-
-    const openGroupDetail = async (group) => {
-        try {
-            const res = await fetch(`${API_URL}/group-details/${group._id}`);
-            const details = await res.json();
-            setGroupDetails(details);
-            calculateLeaderboard(details, 'players', 'all');
-            setView('detail');
-        } catch(err) { console.error(err); }
-    };
-    
-    // --- NEW: HANDLE LEAVE ---
-    const handleLeave = async () => {
-        if(!window.confirm("Are you sure you want to leave this group?")) return;
-        try {
-            const res = await fetch(`${API_URL}/leave-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, groupId: groupDetails._id })
-            });
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setView('list'); // Go back to list
-        } catch (err) { alert("Error leaving group"); }
-    };
-
-    // --- NEW: HANDLE KICK (Admin) ---
-    const handleKick = async (targetId) => {
-        if(!window.confirm("Kick this user?")) return;
-        try {
-            const res = await fetch(`${API_URL}/kick-member`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ requesterId: user.id, targetId, groupId: groupDetails._id })
-            });
-            if (!res.ok) throw new Error("Failed to kick");
-            // Refresh details locally
-            const updatedMembers = groupDetails.members.filter(m => m._id !== targetId);
-            const updatedDetails = { ...groupDetails, members: updatedMembers };
-            setGroupDetails(updatedDetails);
-            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); // Recalc stats
-        } catch (err) { alert(err.message); }
-    };
-
-    const calculateLeaderboard = (details, type, time) => {
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        let data = [];
-
-        if (type === 'players') {
-            data = details.members.map(m => {
-                let wins = 0;
-                let games = 0;
-                if (time === 'all') {
-                    wins = m.stats.wins;
-                    games = m.stats.gamesPlayed;
-                } else {
-                    const monthlyMatches = (m.matchHistory || []).filter(match => {
-                        const d = new Date(match.date);
-                        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                    });
-                    games = monthlyMatches.length;
-                    wins = monthlyMatches.filter(match => match.result === 'win').length;
-                }
-                return { name: m.username, wins, games, winRate: games > 0 ? (wins/games) : 0 };
-            });
-        } else {
-            let allDecks = [];
-            details.members.forEach(m => {
-                m.decks.forEach(d => {
-                    let wins = 0;
-                    let games = 0;
-                    if (time === 'all') {
-                        wins = d.wins;
-                        games = d.wins + d.losses;
-                    } else {
-                        const deckMatches = (m.matchHistory || []).filter(match => {
-                            const date = new Date(match.date);
-                            return match.deckId === d._id && date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-                        });
-                        games = deckMatches.length;
-                        wins = deckMatches.filter(match => match.result === 'win').length;
-                    }
-                    if (games > 0) {
-                        allDecks.push({ 
-                            name: d.name, 
-                            owner: m.username, 
-                            wins, 
-                            games, 
-                            winRate: (wins/games) 
-                        });
-                    }
-                });
-            });
-            data = allDecks;
-        }
-
-        data.sort((a,b) => b.winRate - a.winRate || b.wins - a.wins);
-        setLeaderboardData(data);
-    };
-
-    useEffect(() => {
-        if(groupDetails) calculateLeaderboard(groupDetails, lbType, lbTimeframe);
-    }, [lbType, lbTimeframe, groupDetails]);
-
-    const copyInvite = () => {
-        if(groupDetails) {
-            navigator.clipboard.writeText(groupDetails.code);
-            alert("Group Code Copied: " + groupDetails.code);
-        }
-    };
-    
-    // Check if current user is admin of this group
-    const isAdmin = groupDetails && groupDetails.admins && groupDetails.admins.includes(user.id);
-
-    return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
-            <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
-            
-            {view === 'list' && (
-                <>
-                    <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>My Groups</h1>
-                    <div style={{display:'flex', gap:'20px', marginBottom:'30px', flexWrap:'wrap'}}>
-                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
-                            <h3 style={{marginTop:0}}>Create Group</h3>
-                            <div style={{display:'flex', gap:'5px'}}>
-                                <input type="text" placeholder="Group Name" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} style={{...inputStyle, flex:1}} />
-                                <button onClick={handleCreateGroup} style={{background:'#2563eb', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Create</button>
-                            </div>
-                        </div>
-                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
-                            <h3 style={{marginTop:0}}>Join Group</h3>
-                            <div style={{display:'flex', gap:'5px'}}>
-                                <input type="text" placeholder="Enter Code (6 chars)" value={joinCode} onChange={e => setJoinCode(e.target.value)} style={{...inputStyle, flex:1, textTransform:'uppercase'}} maxLength={6} />
-                                <button onClick={handleJoinGroup} style={{background:'#16a34a', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Join</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px'}}>
-                        {user.groups && user.groups.map(g => (
-                            <div key={g._id} onClick={() => openGroupDetail(g)} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', padding: '20px', cursor:'pointer', textAlign:'center'}}>
-                                <div style={{fontSize:'18px', fontWeight:'bold', marginBottom:'5px'}}>{g.name}</div>
-                                <div style={{fontSize:'12px', color:'#666'}}>Click to view</div>
-                            </div>
-                        ))}
-                    </div>
-                </>
-            )}
-
-            {view === 'detail' && groupDetails && (
-                <div>
-                    <button onClick={() => setView('list')} style={{background: 'transparent', border:'none', color:'#aaa', cursor:'pointer', marginBottom:'10px'}}>← Back to List</button>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #333', paddingBottom:'10px', marginBottom:'20px'}}>
-                        <div>
-                            <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
-                            <div style={{color:'#666', fontSize:'14px', marginTop:'5px'}}>Code: <span style={{color:'#fff', fontWeight:'bold'}}>{groupDetails.code}</span></div>
-                        </div>
-                        <div style={{display:'flex', gap:'10px'}}>
-                            <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
-                            <button onClick={handleLeave} style={{background: '#ef4444', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🚪 Leave Group</button>
-                        </div>
-                    </div>
-
-                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px', marginBottom:'30px'}}>
-                        {groupDetails.members.map(m => (
-                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                <div>
-                                    <div style={{fontWeight:'bold'}}>{m.username} {(groupDetails.admins || []).includes(m._id) && <span style={{color:'#facc15', fontSize:'10px'}}>(Admin)</span>}</div>
-                                </div>
-                                {isAdmin && m._id !== user.id && (
-                                    <button onClick={(e) => { e.stopPropagation(); handleKick(m._id); }} style={{background:'transparent', border:'1px solid #ef4444', color:'#ef4444', cursor:'pointer', padding:'2px 6px', borderRadius:'4px', fontSize:'10px'}}>Kick</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
-                        <div style={{display:'flex', background:'#333', borderRadius:'4px', padding:'2px'}}>
-                            <button onClick={() => setLbType('players')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'players' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Players</button>
-                            <button onClick={() => setLbType('decks')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'decks' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Decks</button>
-                        </div>
-                        <select value={lbTimeframe} onChange={e => setLbTimeframe(e.target.value)} style={{padding:'6px', borderRadius:'4px', background:'#333', color:'white', border:'1px solid #555', outline:'none'}}>
-                            <option value="all">All Time</option>
-                            <option value="month">This Month</option>
-                        </select>
-                    </div>
-
-                    <div style={{background:'#1a1a1a', border:'1px solid #333', borderRadius:'8px', overflow:'hidden'}}>
-                        <div style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', background:'#222', padding:'10px', fontWeight:'bold', fontSize:'12px', color:'#aaa'}}>
-                            <div>{lbType === 'players' ? 'PLAYER' : 'DECK'}</div>
-                            {lbType === 'decks' && <div>OWNER</div>}
-                            <div style={{textAlign:'center'}}>WINS</div>
-                            <div style={{textAlign:'center'}}>GAMES</div>
-                            <div style={{textAlign:'right'}}>WIN RATE</div>
-                        </div>
-                        {leaderboardData.length === 0 && <div style={{padding:'20px', textAlign:'center', color:'#666'}}>No stats recorded for this period.</div>}
-                        {leaderboardData.map((row, i) => (
-                            <div key={i} style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', padding:'12px 10px', borderBottom:'1px solid #333', alignItems:'center'}}>
-                                <div style={{fontWeight:'bold'}}>{i+1}. {row.name}</div>
-                                {lbType === 'decks' && <div style={{fontSize:'12px', color:'#888'}}>{row.owner}</div>}
-                                <div style={{textAlign:'center', color:'#22c55e'}}>{row.wins}</div>
-                                <div style={{textAlign:'center'}}>{row.games}</div>
-                                <div style={{textAlign:'right'}}>{Math.round(row.winRate * 100)}%</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
         </div>
     );
 };
@@ -396,57 +134,14 @@ const FinishGameModal = ({ players, onFinish, onClose }) => {
 };
 
 // --- DECK SELECTION MODAL ---
-const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUser }) => {
+const DeckSelectionModal = ({ user, onConfirm, onOpenProfile }) => {
     const [selectedDeckId, setSelectedDeckId] = useState("");
     const [hideCommander, setHideCommander] = useState(false);
-    
-    // Random State
-    const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-    const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
-    const [resetCycle, setResetCycle] = useState(false);
-
-    const handleRandom = () => {
-        if (!user || !user.decks || user.decks.length === 0) return;
-        
-        let pool = [...user.decks];
-        let willReset = false;
-
-        if (useCycle && user.deckCycleHistory) {
-            const playedIds = user.deckCycleHistory;
-            const remaining = pool.filter(d => !playedIds.includes(d._id));
-            if (remaining.length === 0) {
-                willReset = true;
-                alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
-                pool = [...user.decks];
-            } else {
-                pool = remaining;
-            }
-        }
-
-        const randomIndex = Math.floor(Math.random() * pool.length);
-        const randomDeck = pool[randomIndex];
-        
-        setSelectedDeckId(randomDeck._id);
-        setWasRandomlyPicked(true);
-        setResetCycle(willReset);
-    };
 
     const handleConfirm = async () => {
         if (selectedDeckId === "ADD_NEW") {
             onOpenProfile();
             return;
-        }
-
-        if (wasRandomlyPicked && useCycle) {
-            try {
-                const res = await fetch(`${API_URL}/record-deck-usage`, {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                    body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
-                });
-                const newHistory = await res.json();
-                onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
-            } catch (err) { console.error("Failed to update deck cycle", err); }
         }
 
         let deckData = null;
@@ -471,32 +166,15 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                 
                 {user ? (
                     <div>
-                        <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
-                             <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
-                             <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                                <input 
-                                    type="checkbox" 
-                                    checked={useCycle} 
-                                    onChange={e => {
-                                        setUseCycle(e.target.checked);
-                                        localStorage.setItem('battlemat_use_cycle', e.target.checked);
-                                    }} 
-                                    id="cycleCheckModal" 
-                                    style={{cursor:'pointer'}} 
-                                />
-                                <label htmlFor="cycleCheckModal" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
-                             </div>
-                        </div>
-
-                        <div style={{display: 'flex', gap: '10px', alignItems: 'center'}}>
+                        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
+                        <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
                             <select 
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                        onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
-                                        setWasRandomlyPicked(false);
                                     }
                                 }} 
                                 style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#333', color: 'white', border: '1px solid #555', outline: 'none'}}
@@ -505,9 +183,6 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
                                 <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                             </select>
-                            
-                            <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
-                            
                             <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                         </div>
                     </div>
@@ -594,7 +269,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     return (
         <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
             <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
-            <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>{user.username}</h1>
+            <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
                 <div style={statBoxStyle}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
                 <div style={statBoxStyle}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
@@ -637,19 +312,13 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED: LOGOUT BUTTON ADDED) ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout, onOpenGroups }) => {
+// --- LOBBY ---
+const Lobby = ({ onJoin, user, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
   const [selectedDeviceId, setSelectedDeviceId] = useState('');
   const [previewStream, setPreviewStream] = useState(null);
   const [hideCommander, setHideCommander] = useState(false); 
-  
-  // Random State
-  const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-  const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
-  const [resetCycle, setResetCycle] = useState(false);
-
   const videoRef = useRef(null);
 
   useEffect(() => {
@@ -674,47 +343,7 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [step, selectedDeviceId]);
 
-  // --- RANDOM DECK LOGIC ---
-  const handleRandom = () => {
-    if (!user || !user.decks || user.decks.length === 0) return;
-    
-    let pool = [...user.decks];
-    let willReset = false;
-
-    if (useCycle && user.deckCycleHistory) {
-        const playedIds = user.deckCycleHistory;
-        const remaining = pool.filter(d => !playedIds.includes(d._id));
-        if (remaining.length === 0) {
-            willReset = true;
-            alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
-            pool = [...user.decks];
-        } else {
-            pool = remaining;
-        }
-    }
-
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    const randomDeck = pool[randomIndex];
-    
-    onSelectDeck(randomDeck._id); // Update parent state
-    setWasRandomlyPicked(true);
-    setResetCycle(willReset);
-  };
-
   const handleEnterGame = async () => { 
-      // RECORD CYCLE USAGE IF RANDOM WAS USED
-      if (wasRandomlyPicked && useCycle && user && token) {
-        try {
-            const res = await fetch(`${API_URL}/record-deck-usage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
-            });
-            const newHistory = await res.json();
-            onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
-        } catch (err) { console.error("Failed to update deck cycle", err); }
-      }
-
       let deckData = null;
       if (user && user.decks && selectedDeckId) {
           const selected = user.decks.find(d => d._id === selectedDeckId);
@@ -739,33 +368,14 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                {/* --- LOGOUT BUTTON MOVED HERE --- */}
-                <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
-
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
-                <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-                    <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
-                    {/* --- GROUPS BUTTON --- */}
-                    <button onClick={onOpenGroups} style={{padding: '8px 16px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👥 Groups</button>
-                </div>
+                <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
             </div>
         ) : (
             <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
         )}
         <div style={{ display: 'flex', gap: '30px' }}>
-            {/* --- UPDATED: BUTTON DISABLED IF NO USER --- */}
-            <button 
-                onClick={() => user && setStep('setup')} 
-                disabled={!user}
-                style={{
-                    ...lobbyBtnStyle, 
-                    background: user ? '#2563eb' : '#444', 
-                    cursor: user ? 'pointer' : 'not-allowed',
-                    opacity: user ? 1 : 0.6
-                }}
-            >
-                {user ? '🎥 Join as Player' : '🔒 Login to Play'}
-            </button>
+          <button onClick={() => setStep('setup')} style={lobbyBtnStyle}>🎥 Join as Player</button>
           <button onClick={handleSpectate} style={{...lobbyBtnStyle, background: '#333', color: '#ccc', border: '1px solid #555'}}>👁️ Spectate Only</button>
         </div>
       </div>
@@ -783,23 +393,7 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         
         {user && user.decks && (
             <div>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
-                        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
-                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                        <input 
-                            type="checkbox" 
-                            checked={useCycle} 
-                            onChange={e => {
-                                setUseCycle(e.target.checked);
-                                localStorage.setItem('battlemat_use_cycle', e.target.checked);
-                            }} 
-                            id="cycleCheckLobby" 
-                            style={{cursor:'pointer'}} 
-                        />
-                        <label htmlFor="cycleCheckLobby" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
-                        </div>
-                </div>
-
+                <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
                     {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
                     <select 
@@ -809,7 +403,6 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                                 onOpenProfile(); 
                             } else {
                                 onSelectDeck(e.target.value);
-                                setWasRandomlyPicked(false);
                             }
                         }} 
                         style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
@@ -819,7 +412,6 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                         <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
                     </select>
 
-                    <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
                     <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
                 </div>
             </div>
@@ -1005,8 +597,8 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   // Logic simplified: No inputs, just display.
   
   if (secretData) {
-      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
-      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
+      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic'}}>🙈 Hidden</span>;
   }
 
   if (cardData) {
@@ -1014,14 +606,14 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
         <span 
             onMouseEnter={() => onHover(cardData)} 
             onMouseLeave={onLeave} 
-            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold', fontSize: '10px' }}
+            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold' }}
         >
             {cardData.name}
         </span>
       );
   }
 
-  return <span style={{color: '#777', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
+  return <span style={{color: '#777', fontSize: '12px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
@@ -1050,7 +642,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
+const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
   const [hoveredCard, setHoveredCard] = useState(null); 
@@ -1097,13 +689,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   if (finalH > height) { finalH = height; finalW = height * TARGET_RATIO; }
 
   return (
-    <div 
-        draggable={isHost} 
-        onDragStart={(e) => isHost && onDragStart(e, userId)} 
-        onDragOver={(e) => isHost && e.preventDefault()} 
-        onDrop={(e) => isHost && onDrop(e, userId)} 
-        style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default' }}
-    >
+    <div draggable onDragStart={(e) => onDragStart(e, userId)} onDragOver={(e) => e.preventDefault()} onDrop={(e) => onDrop(e, userId)} style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: 'grab' }}>
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
         <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
@@ -1238,7 +824,6 @@ function App() {
   const [searchHistory, setSearchHistory] = useState([]); 
   const [inviteText, setInviteText] = useState("Invite");
   const [showHistory, setShowHistory] = useState(false); 
-  const [showGroups, setShowGroups] = useState(false); 
   
   // --- AUTH STATE ---
   const [user, setUser] = useState(null);
@@ -1248,7 +833,6 @@ function App() {
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [showFinishModal, setShowFinishModal] = useState(false); 
   const [showDeckSelect, setShowDeckSelect] = useState(false); // NEW STATE for between-games
-  const [hostId, setHostId] = useState(null); // --- NEW: HOST ID STATE
 
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
@@ -1261,44 +845,6 @@ function App() {
   useEffect(() => { turnStateRef.current = turnState; }, [turnState]);
   useEffect(() => { myIdRef.current = myId; }, [myId]);
   useEffect(() => { cameraRatioRef.current = cameraRatio; }, [cameraRatio]);
-
-  // --- AUTO LOGIN ---
-  useEffect(() => {
-    const savedToken = localStorage.getItem('battlemat_token');
-    const savedUser = localStorage.getItem('battlemat_user');
-    if (savedToken && savedUser) {
-        setToken(savedToken);
-        setUser(JSON.parse(savedUser));
-    }
-  }, []);
-  
-  // --- SYNC USER TO LOCAL STORAGE ---
-  useEffect(() => {
-    if (user) {
-        localStorage.setItem('battlemat_user', JSON.stringify(user));
-    }
-  }, [user]);
-
-  const handleLogout = () => {
-    localStorage.removeItem('battlemat_token');
-    localStorage.removeItem('battlemat_user');
-    setUser(null);
-    setToken(null);
-    setShowProfile(false);
-  };
-  
-  const refreshUserData = async () => {
-    if (!user || !token) return;
-    // Since we don't have a specific 'get-user' route, we rely on the finish-game response 
-    // or we could re-login silently. 
-    // For now, the finish-game logic updates the local state via setUser in handleRecordStat/finishGame 
-    // if we modified the response structure.
-    
-    // Better yet, just re-fetch the profile.
-    // ... Actually, the current finish-game route doesn't return the updated user object.
-    // Let's rely on the optimistic UI updates or create a refresh route later if needed.
-    // For now, auto-syncing the state is enough.
-  };
 
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
     if (targetUserId && updates && targetUserId === myId) {
@@ -1415,14 +961,6 @@ function App() {
               headers: { 'Content-Type': 'application/json' },
               body: JSON.stringify({ results })
           });
-          
-          // FETCH FRESH STATS
-          if (user && user.id) {
-            const res = await fetch(`${API_URL}/user/${user.id}`);
-            const updatedUser = await res.json();
-            setUser(updatedUser); // Update local state immediately
-            localStorage.setItem('battlemat_user', JSON.stringify(updatedUser)); // Update storage
-          }
           
           const newGameState = {};
           seatOrder.forEach(pid => {
@@ -1734,16 +1272,10 @@ function App() {
         });
     });
 
-    // --- HOST UPDATE HANDLER ---
-    socket.on('host-update', (newHostId) => {
-        setHostId(newHostId);
-    });
-
     return () => { 
       socket.off('user-connected'); socket.off('user-disconnected'); socket.off('game-state-updated'); 
       socket.off('turn-state-updated'); socket.off('game-reset'); socket.off('seat-order-updated');
       socket.off('full-state-sync'); socket.off('status-claimed');
-      socket.off('host-update');
       if(peerRef.current) peerRef.current.destroy(); 
     };
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -1759,9 +1291,6 @@ function App() {
   // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
 
-  // --- IS HOST? ---
-  const isHost = myId === hostId; // --- THIS WAS THE MISSING LINE
-
   return (
     <>
       <style>{`
@@ -1776,23 +1305,17 @@ function App() {
       {showProfile && user && <ProfileScreen user={user} token={token} onClose={() => setShowProfile(false)} onUpdateUser={setUser} />}
       {showFinishModal && <FinishGameModal players={activePlayers} onFinish={handleFinishGame} onClose={() => setShowFinishModal(false)} />}
       
-      {showGroups && user && <GroupsModal user={user} onClose={() => setShowGroups(false)} onUpdateUser={setUser} />}
-
       {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
-      {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
+      {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} />}
 
       {!hasJoined && (
         <Lobby 
             onJoin={joinGame} 
             user={user} 
-            token={token}
             onOpenAuth={() => setShowAuthModal(true)} 
             onOpenProfile={() => setShowProfile(true)}
             onSelectDeck={setSelectedDeckId}
             selectedDeckId={selectedDeckId}
-            onUpdateUser={setUser}
-            onLogout={handleLogout}
-            onOpenGroups={() => setShowGroups(true)}
         />
       )}
 
@@ -1806,23 +1329,17 @@ function App() {
                   <div style={{fontWeight: 'bold', fontSize: '14px', color: '#c4b5fd'}}>BattleMat</div>
                   <div style={{fontWeight: 'bold', fontSize: '16px', color: '#facc15', marginLeft: '10px'}}>TURN {turnState.count}</div>
                   {user && <div style={{fontSize: '11px', color: '#888', marginLeft: '10px'}}>Logged in as {user.username}</div>}
-                  {isHost && <div style={{fontSize: '10px', background: '#f59e0b', color: 'black', padding: '2px 4px', borderRadius: '4px', fontWeight: 'bold'}}>HOST</div>}
               </div>
               <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
-                {!isSpectator && isHost && (
+                {!isSpectator && (
                     <>
                     <button onClick={() => setShowFinishModal(true)} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🏆 FINISH GAME</button>
                     <button onClick={randomizeSeats} style={{background: '#333', border: '1px solid #555', color: '#ccc', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px'}}>🔀 Seats</button>
                     </>
                 )}
-                {isSpectator && (
-                    <>
-                      <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>
-                      <button onClick={handleLeaveGame} style={{background: '#333', border: '1px solid #555', color: '#fca5a5', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🚪 Leave</button>
-                    </>
-                )}
+                {isSpectator && <div style={{color: '#aaa', fontSize: '12px', fontStyle: 'italic', border: '1px solid #444', padding: '2px 6px', borderRadius: '4px'}}>Spectator Mode</div>}
               </div>
             </div>
             <div ref={containerRef} style={{ flexGrow: 1, width: '100%', height: '100%', display: 'flex', flexWrap: 'wrap', alignContent: 'center', justifyContent: 'center', overflow: 'hidden' }}>
@@ -1849,7 +1366,6 @@ function App() {
                   onRecordStat={handleRecordStat} 
                   onOpenDeckSelect={() => setShowDeckSelect(true)}
                   onLeaveGame={handleLeaveGame}
-                  isHost={isHost}
                 />
               ))}
             </div>
