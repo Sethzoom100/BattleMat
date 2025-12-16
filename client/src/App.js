@@ -7,7 +7,7 @@ import './App.css';
 // Components
 import Lobby from './components/Lobby';
 import VideoContainer from './components/VideoContainer';
-import AuthModal from './components/AuthModal'; // Create this from original
+import AuthModal from './components/AuthModal.js'; // Add the .js extension explicitly
 import ProfileScreen from './components/ProfileScreen'; // Create this from original
 import FinishGameModal from './components/FinishGameModal'; // Create this from original
 import { API_URL } from './utils/api';
