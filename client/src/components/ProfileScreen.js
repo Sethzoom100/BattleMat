@@ -66,9 +66,9 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
             <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>Player Profile: {user.username}</h1>
             
             <div style={{display: 'flex', gap: '20px', marginBottom: '20px'}}>
-                <div className="stat-box" style={{background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444'}}><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
-                <div className="stat-box" style={{background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444'}}><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
-                <div className="stat-box" style={{background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444'}}><h3>🎲 Games</h3><span>{user.stats.gamesPlayed}</span></div>
+                <div className="stat-box"><h3>🏆 Wins</h3><span>{user.stats.wins}</span></div>
+                <div className="stat-box"><h3>💀 Losses</h3><span>{user.stats.losses}</span></div>
+                <div className="stat-box"><h3>🎲 Games</h3><span>{user.stats.gamesPlayed}</span></div>
             </div>
 
             <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '15px'}}>
