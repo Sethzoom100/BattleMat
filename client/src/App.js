@@ -1022,20 +1022,11 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
-// --- UPDATED: COMMANDER LABEL (Simplified for Top Bar) ---
-const CommanderLabel = ({ cardData, isMyStream, onHover, onLeave, secretData, onReveal }) => {
+// --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
+const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
   if (secretData) {
-      if (isMyStream) {
-          return (
-            <button 
-                onClick={(e) => { e.stopPropagation(); onReveal(); }} 
-                style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', padding: '1px 4px', borderRadius: '2px'}}
-            >
-                Reveal {secretData.name}
-            </button>
-          );
-      }
-      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>Hidden Commander</span>;
+      if (isMyStream) return <button onClick={(e) => { e.stopPropagation(); onReveal(); }} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', padding: '1px 4px', borderRadius: '2px'}}>👁 Reveal {secretData.name}</button>;
+      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
   }
 
   if (cardData) {
@@ -1053,33 +1044,81 @@ const CommanderLabel = ({ cardData, isMyStream, onHover, onLeave, secretData, on
   return <span style={{color: '#555', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
-const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
+// --- UPDATED: DAMAGE PANEL (DROPDOWN STYLE WITH 2 COLUMNS) ---
+const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClaimStatus, onClose }) => {
   const poison = targetPlayerData?.poison || 0;
   const cmdDamageTaken = targetPlayerData?.cmdDamageTaken || {};
+
   return (
-    <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', width: '260px', maxHeight: '80%', background: 'rgba(15, 15, 15, 0.98)', border: '1px solid #666', borderRadius: '12px', padding: '16px', zIndex: 9999, display: 'flex', flexDirection: 'column', backdropFilter: 'blur(10px)', boxShadow: '0 20px 50px rgba(0,0,0,1)' }}>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', borderBottom: '1px solid #444', paddingBottom: '8px'}}><span style={{fontWeight: 'bold', fontSize: '12px', color: '#ccc'}}>DAMAGE & INFECT</span><button onClick={onClose} style={{background: 'none', border: 'none', color: '#888', cursor: 'pointer', fontSize: '16px', fontWeight: 'bold'}}>✕</button></div>
-      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '16px', background: 'rgba(34, 197, 94, 0.1)', padding: '8px', borderRadius: '6px', border: '1px solid rgba(34, 197, 94, 0.3)'}}><div style={{display: 'flex', flexDirection: 'column'}}><span style={{color: '#22c55e', fontSize: '13px', fontWeight: 'bold'}}>POISON</span></div><div style={{display: 'flex', alignItems: 'center', background: '#222', borderRadius: '4px', padding: '2px'}}>{isMyStream && <button onClick={() => updateGame(userId, { poison: Math.max(0, poison - 1) })} style={tinyBtn}>-</button>}<span style={{width: '30px', textAlign: 'center', fontWeight: 'bold', fontSize: '18px', color: 'white'}}>{poison}</span>{isMyStream && <button onClick={() => updateGame(userId, { poison: poison + 1 })} style={tinyBtn}>+</button>}</div></div>
-      <div style={{fontSize: '11px', color: '#888', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.5px', fontWeight: 'bold'}}>Commander Damage Taken</div>
-      <div style={{overflowY: 'auto', flex: 1, paddingRight: '4px'}}>
-        {allPlayerIds.length <= 1 && <div style={{fontSize: '11px', color: '#555', fontStyle: 'italic', textAlign: 'center', padding: '10px'}}>No opponents recorded.</div>}
-        {allPlayerIds.map(attackerId => {
-          const attackerData = allGameState[attackerId] || {};
-          const cmds = attackerData.commanders || {};
-          const dmgObj = cmdDamageTaken[attackerId] || { primary: 0, partner: 0 };
-          const primaryName = cmds.primary?.name || `Player ${attackerId.substr(0,3)}`;
-          const renderRow = (name, val, type) => (
-            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginBottom: '6px', color: val >= 21 ? '#ef4444' : '#ddd'}}><div style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={name}>{name}</div><div style={{display: 'flex', alignItems: 'center', background: isMyStream ? '#333' : 'transparent', borderRadius: '3px'}}>{isMyStream && <button style={tinyBtn} onClick={() => updateGame(null, null, { opponentId: attackerId, type, amount: -1 })}>-</button>}<span style={{width: '24px', textAlign: 'center', fontWeight: 'bold'}}>{val}</span>{isMyStream && <button style={tinyBtn} onClick={() => updateGame(null, null, { opponentId: attackerId, type, amount: 1 })}>+</button>}</div></div>
-          );
-          if (!isMyStream && !(dmgObj.primary > 0 || dmgObj.partner > 0)) return null;
-          return <div key={attackerId} style={{marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '4px'}}>{renderRow(primaryName, dmgObj.primary || 0, 'primary')}</div>;
-        })}
+    <div style={{ 
+        position: 'absolute', top: '50px', left: '10px', 
+        width: '380px', maxHeight: 'calc(100% - 60px)', 
+        background: 'rgba(20, 20, 20, 0.98)', border: '1px solid #555', 
+        borderRadius: '8px', padding: '12px', zIndex: 2000, 
+        display: 'flex', flexDirection: 'column', 
+        boxShadow: '0 10px 30px rgba(0,0,0,0.8)', backdropFilter: 'blur(8px)'
+    }} onClick={(e) => e.stopPropagation()}> {/* Prevent click propagation to backdrop */}
+      
+      {/* Header */}
+      <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', borderBottom: '1px solid #444', paddingBottom: '8px'}}>
+        <span style={{fontWeight: 'bold', fontSize: '12px', color: '#ccc'}}>GAME STATUS & DAMAGE</span>
+      </div>
+
+      <div style={{display: 'flex', gap: '15px', flex: 1, overflow: 'hidden'}}>
+        
+        {/* LEFT COLUMN: Damage & Poison */}
+        <div style={{flex: 1, display: 'flex', flexDirection: 'column', overflowY: 'auto'}}>
+            
+            {/* Poison Row */}
+            <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px', background: 'rgba(34, 197, 94, 0.1)', padding: '6px 10px', borderRadius: '6px', border: '1px solid rgba(34, 197, 94, 0.3)'}}>
+                <span style={{color: '#22c55e', fontSize: '12px', fontWeight: 'bold'}}>POISON</span>
+                <div style={{display: 'flex', alignItems: 'center', background: '#111', borderRadius: '4px', padding: '2px'}}>
+                    {isMyStream && <button onClick={() => updateGame(userId, { poison: Math.max(0, poison - 1) })} style={tinyBtn}>-</button>}
+                    <span style={{width: '24px', textAlign: 'center', fontWeight: 'bold', fontSize: '16px', color: 'white'}}>{poison}</span>
+                    {isMyStream && <button onClick={() => updateGame(userId, { poison: poison + 1 })} style={tinyBtn}>+</button>}
+                </div>
+            </div>
+
+            {/* Commander Damage Header */}
+            <div style={{fontSize: '10px', color: '#888', marginBottom: '6px', textTransform: 'uppercase', fontWeight: 'bold'}}>Commander Damage</div>
+            
+            {/* List */}
+            <div style={{flex: 1, overflowY: 'auto'}}>
+                {allPlayerIds.length <= 1 && <div style={{fontSize: '11px', color: '#555', fontStyle: 'italic', padding: '5px'}}>No opponents.</div>}
+                {allPlayerIds.map(attackerId => {
+                    const attackerData = allGameState[attackerId] || {};
+                    const cmds = attackerData.commanders || {};
+                    const dmgObj = cmdDamageTaken[attackerId] || { primary: 0, partner: 0 };
+                    const primaryName = cmds.primary?.name || `Player ${attackerId.substr(0,3)}`;
+                    const renderRow = (name, val, type) => (
+                        <div style={{display: 'flex', justifyContent: 'space-between', alignItems: 'center', fontSize: '11px', marginBottom: '6px', color: val >= 21 ? '#ef4444' : '#ddd'}}><div style={{whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '140px'}} title={name}>{name}</div><div style={{display: 'flex', alignItems: 'center', background: isMyStream ? '#333' : 'transparent', borderRadius: '3px'}}>{isMyStream && <button style={tinyBtn} onClick={() => updateGame(null, null, { opponentId: attackerId, type, amount: -1 })}>-</button>}<span style={{width: '24px', textAlign: 'center', fontWeight: 'bold'}}>{val}</span>{isMyStream && <button style={tinyBtn} onClick={() => updateGame(null, null, { opponentId: attackerId, type, amount: 1 })}>+</button>}</div></div>
+                    );
+                    if (!isMyStream && !(dmgObj.primary > 0 || dmgObj.partner > 0)) return null;
+                    return <div key={attackerId} style={{marginBottom: '8px', borderBottom: '1px solid #333', paddingBottom: '4px'}}>{renderRow(primaryName, dmgObj.primary || 0, 'primary')}</div>;
+                })}
+            </div>
+        </div>
+
+        {/* RIGHT COLUMN: Status Actions */}
+        {isMyStream && (
+            <div style={{width: '110px', borderLeft: '1px solid #444', paddingLeft: '15px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
+                <div style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Status</div>
+                
+                <button onClick={() => onClaimStatus('monarch')} style={{...menuBtnStyle, border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.1)', color: '#facc15', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}>
+                    👑 Monarch
+                </button>
+                
+                <button onClick={() => onClaimStatus('initiative')} style={{...menuBtnStyle, border: '1px solid #a8a29e', background: 'rgba(168, 162, 158, 0.1)', color: '#e5e5e5', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}>
+                    🏰 Initiative
+                </button>
+            </div>
+        )}
       </div>
     </div>
   );
 };
 
-// --- UPDATED: VIDEO CONTAINER (SpellTable Style) ---
+// --- UPDATED: VIDEO CONTAINER (SpellTable Style + Clean Settings) ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -1136,11 +1175,24 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
         onDragStart={(e) => isHost && onDragStart(e, userId)} 
         onDragOver={(e) => isHost && e.preventDefault()} 
         onDrop={(e) => isHost && onDrop(e, userId)} 
+        // --- ADDED position: relative so absolute menus work ---
         style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default', position: 'relative' }}
     >
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden', position: 'relative' }}>
         
-        {/* --- NEW TOP BAR --- */}
+        {/* --- BACKDROP FOR CLICKING OFF --- */}
+        { (showSettings || showDamagePanel) && (
+            <div 
+                style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1500}} 
+                onClick={(e) => { 
+                    e.stopPropagation(); 
+                    setShowSettings(false); 
+                    setShowDamagePanel(false); 
+                }}
+            /> 
+        )}
+
+        {/* --- TOP BAR --- */}
         <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: '50px',
             background: 'rgba(0, 0, 0, 0.85)',
@@ -1215,7 +1267,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
-            {/* Moved Status Icons down to not overlap the new bar */}
+            {/* Moved Status Icons down */}
             <div style={{position: 'absolute', top: '60px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
@@ -1235,20 +1287,16 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
 
-            {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClose={() => setShowDamagePanel(false)} />}
+            {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClaimStatus={onClaimStatus} onClose={() => setShowDamagePanel(false)} />}
         </div>
       </div>
 
-      {/* --- SETTINGS MENU (Shortened & Moved Outside Overflow) --- */}
+      {/* --- SETTINGS MENU (Outside Overflow) --- */}
       {showSettings && (
             <div style={{ position: 'absolute', top: '50px', right: '10px', zIndex: 2000, background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.8)' }}>
                 <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
                 {isMyStream && (
                     <>
-                        {/* Shortened Menu: Removed Ratio and Lobby buttons */}
-                        <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
-                        <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
-                        
                         <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
 
                         <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
