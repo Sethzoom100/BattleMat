@@ -926,14 +926,24 @@ const TokenSearchBar = ({ onSelect }) => {
   );
 };
 
+// --- UPDATED: LIFE COUNTER (Fits inside the top bar) ---
 const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(life);
+  
   useEffect(() => { setVal(life); }, [life]);
-  const handleFinish = () => { setIsEditing(false); const num = parseInt(val); if (!isNaN(num)) onLifeSet(num); else setVal(life); };
+  
+  const handleFinish = () => { 
+      setIsEditing(false); 
+      const num = parseInt(val); 
+      if (!isNaN(num)) onLifeSet(num); 
+      else setVal(life); 
+  };
+
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '10px', paddingRight: '10px', borderRight: '1px solid #444' }}>
       {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(-1); }} style={roundBtnLarge}>-</button>}
+      
       {isEditing ? (
           <input 
             autoFocus 
@@ -958,6 +968,7 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
             {life}
           </span>
       )}
+      
       {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(1); }} style={roundBtnLarge}>+</button>}
     </div>
   );
@@ -1011,6 +1022,7 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
+// --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
   if (secretData) {
       if (isMyStream) return <button onClick={(e) => { e.stopPropagation(); onReveal(); }} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', padding: '1px 4px', borderRadius: '2px'}}>👁 Reveal {secretData.name}</button>;
@@ -1092,11 +1104,17 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
             <div style={{width: '110px', borderLeft: '1px solid #444', paddingLeft: '15px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
                 <div style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Status</div>
                 
-                <button onClick={() => onClaimStatus('monarch')} style={{...menuBtnStyle, border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.1)', color: '#facc15', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}>
+                <button 
+                    onClick={() => { onClaimStatus('monarch'); onClose(); }} 
+                    style={{...menuBtnStyle, border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.1)', color: '#facc15', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}
+                >
                     👑 Monarch
                 </button>
                 
-                <button onClick={() => onClaimStatus('initiative')} style={{...menuBtnStyle, border: '1px solid #a8a29e', background: 'rgba(168, 162, 158, 0.1)', color: '#e5e5e5', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}>
+                <button 
+                    onClick={() => { onClaimStatus('initiative'); onClose(); }} 
+                    style={{...menuBtnStyle, border: '1px solid #a8a29e', background: 'rgba(168, 162, 158, 0.1)', color: '#e5e5e5', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}
+                >
                     🏰 Initiative
                 </button>
             </div>
@@ -1855,25 +1873,16 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
-  // --- FIXED addPeer FUNCTION (PREVENTS OVERWRITING SYNCED DATA) ---
+  // --- FIXED addPeer FUNCTION ---
+  // Uses gameStateRef to avoid overwriting data if it already exists
   function addPeer(id, stream, call) {
     if (call) peersRef.current[id] = call;
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     
-    // Check pending state (prev) inside setGameState to ensure we don't overwrite if data exists
-    setGameState(prev => {
-        if (prev[id]) return prev; // If data exists, do NOT overwrite with defaults.
-        
-        return { 
-            ...prev, 
-            [id]: { 
-                life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], 
-                username: `Player ${id.substr(0,4)}`, 
-                commanders: {},
-                cameraRatio: '16:9'
-            } 
-        };
-    });
+    // Only initialize default state if we DON'T have data for this user yet
+    if(!gameStateRef.current[id]) {
+        setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
+    }
     
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
