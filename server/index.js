@@ -53,6 +53,7 @@ app.get('/user/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- UPDATED: CREATE GROUP (Adds Admin) ---
 app.post('/create-group', async (req, res) => {
     try {
         const { userId, name } = req.body;
@@ -60,6 +61,7 @@ app.post('/create-group', async (req, res) => {
         if(!user) return res.status(404).json({msg: "User not found"});
 
         const code = generateCode();
+        // Creator is both Member and Admin
         const newGroup = new Group({ name, code, members: [userId], admins: [userId] });
         await newGroup.save();
 
@@ -92,21 +94,25 @@ app.post('/join-group', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- NEW: LEAVE GROUP (Handles Delete if Empty) ---
 app.post('/leave-group', async (req, res) => {
     try {
         const { userId, groupId } = req.body;
         
+        // 1. Remove group from User's list
         const user = await User.findById(userId);
         if(user) {
             user.groups = user.groups.filter(g => g.toString() !== groupId);
             await user.save();
         }
 
+        // 2. Remove user from Group's members/admins
         const group = await Group.findById(groupId);
         if(group) {
             group.members = group.members.filter(m => m.toString() !== userId);
             group.admins = group.admins.filter(a => a.toString() !== userId);
             
+            // 3. Check if empty
             if (group.members.length === 0) {
                 await Group.findByIdAndDelete(groupId);
                 console.log(`Group ${groupId} deleted (empty).`);
@@ -120,6 +126,7 @@ app.post('/leave-group', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
+// --- NEW: KICK MEMBER (Admin Only) ---
 app.post('/kick-member', async (req, res) => {
     try {
         const { requesterId, targetId, groupId } = req.body;
@@ -127,14 +134,17 @@ app.post('/kick-member', async (req, res) => {
         const group = await Group.findById(groupId);
         if(!group) return res.status(404).json({msg: "Group not found"});
 
+        // Check if requester is admin
         if (!group.admins.includes(requesterId)) {
             return res.status(403).json({msg: "Only admins can kick members."});
         }
 
+        // Remove from Group
         group.members = group.members.filter(m => m.toString() !== targetId);
-        group.admins = group.admins.filter(a => a.toString() !== targetId);
+        group.admins = group.admins.filter(a => a.toString() !== targetId); // Remove admin status too if they had it
         await group.save();
 
+        // Remove from Target User
         const targetUser = await User.findById(targetId);
         if(targetUser) {
             targetUser.groups = targetUser.groups.filter(g => g.toString() !== groupId);
@@ -366,7 +376,7 @@ io.on('connection', (socket) => {
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
 
-    // --- DELTA UPDATE HANDLER (Use This to Prevent Desync) ---
+    // --- DELTA UPDATE HANDLER ---
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) {
