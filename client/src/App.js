@@ -1007,21 +1007,6 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-const CardModal = ({ cardData, onClose }) => {
-  if (!cardData) return null;
-  return (
-    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
-      <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
-        <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
-        <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        {cardData.backImage && (
-            <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
-        )}
-      </div>
-    </div>
-  );
-};
-
 // --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
   if (secretData) {
@@ -1873,10 +1858,21 @@ function App() {
     if (call) peersRef.current[id] = call;
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     
-    // Only initialize default state if we DON'T have data for this user yet
-    if(!gameStateRef.current[id]) {
-        setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
-    }
+    // KEY FIX: Only initialize default state if we DON'T have data for this user yet in local state.
+    // This prevents overwriting the synced data that might have arrived just before this call.
+    setGameState(prev => {
+        if (prev[id]) return prev; // If data exists, do NOT overwrite with defaults.
+        
+        return { 
+            ...prev, 
+            [id]: { 
+                life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], 
+                username: `Player ${id.substr(0,4)}`, 
+                commanders: {},
+                cameraRatio: '16:9'
+            } 
+        };
+    });
     
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
