@@ -353,10 +353,7 @@ io.on('connection', (socket) => {
         }
 
         io.to(roomId).emit('host-update', currentHostId);
-        
-        // --- KEY FIX: Use 'full-state-sync' to match client listener ---
         socket.emit('full-state-sync', roomData[roomId]);
-        
         socket.emit('all-users', activeUsers.filter(id => id !== userId));
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
@@ -371,9 +368,7 @@ io.on('connection', (socket) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) {
             if (!roomData[roomId].gameState[userId]) roomData[roomId].gameState[userId] = {};
-            // Server maintains Source of Truth by merging
             roomData[roomId].gameState[userId] = { ...roomData[roomId].gameState[userId], ...data };
-            // Broadcast delta
             socket.to(roomId).emit('game-state-updated', { userId, data });
         }
     });
