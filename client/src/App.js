@@ -926,24 +926,14 @@ const TokenSearchBar = ({ onSelect }) => {
   );
 };
 
-// --- UPDATED: LIFE COUNTER (Fits inside the top bar) ---
 const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(life);
-  
   useEffect(() => { setVal(life); }, [life]);
-  
-  const handleFinish = () => { 
-      setIsEditing(false); 
-      const num = parseInt(val); 
-      if (!isNaN(num)) onLifeSet(num); 
-      else setVal(life); 
-  };
-
+  const handleFinish = () => { setIsEditing(false); const num = parseInt(val); if (!isNaN(num)) onLifeSet(num); else setVal(life); };
   return (
     <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '10px', paddingRight: '10px', borderRight: '1px solid #444' }}>
       {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(-1); }} style={roundBtnLarge}>-</button>}
-      
       {isEditing ? (
           <input 
             autoFocus 
@@ -968,7 +958,6 @@ const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
             {life}
           </span>
       )}
-      
       {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(1); }} style={roundBtnLarge}>+</button>}
     </div>
   );
@@ -1007,7 +996,21 @@ const HistoryModal = ({ history, onSelect, onClose }) => {
     );
 };
 
-// --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
+const CardModal = ({ cardData, onClose }) => {
+  if (!cardData) return null;
+  return (
+    <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 99999, display: 'flex', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(3px)' }}>
+      <div style={{position: 'relative', display: 'flex', gap: '15px', alignItems: 'center'}} onClick={(e) => e.stopPropagation()}>
+        <button onClick={onClose} style={{ position: 'absolute', top: '-25px', right: '-25px', background: 'white', color: 'black', border: 'none', borderRadius: '50%', width: '40px', height: '40px', fontSize: '20px', fontWeight: 'bold', cursor: 'pointer', boxShadow: '0 2px 10px black', zIndex: 100001 }}>✕</button>
+        <img src={cardData.image} alt={cardData.name} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+        {cardData.backImage && (
+            <img src={cardData.backImage} alt={`${cardData.name} Back`} style={{ maxHeight: '80vh', maxWidth: '40vw', borderRadius: '15px', boxShadow: '0 0 20px black' }} />
+        )}
+      </div>
+    </div>
+  );
+};
+
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
   if (secretData) {
       if (isMyStream) return <button onClick={(e) => { e.stopPropagation(); onReveal(); }} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', padding: '1px 4px', borderRadius: '2px'}}>👁 Reveal {secretData.name}</button>;
@@ -1852,14 +1855,12 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
-  // --- FIXED addPeer FUNCTION ---
-  // Uses gameStateRef to avoid overwriting data if it already exists
+  // --- FIXED addPeer FUNCTION (PREVENTS OVERWRITING SYNCED DATA) ---
   function addPeer(id, stream, call) {
     if (call) peersRef.current[id] = call;
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
     
-    // KEY FIX: Only initialize default state if we DON'T have data for this user yet in local state.
-    // This prevents overwriting the synced data that might have arrived just before this call.
+    // Check pending state (prev) inside setGameState to ensure we don't overwrite if data exists
     setGameState(prev => {
         if (prev[id]) return prev; // If data exists, do NOT overwrite with defaults.
         
