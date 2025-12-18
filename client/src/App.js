@@ -93,10 +93,8 @@ const AuthModal = ({ onClose, onLogin }) => {
                 setIsRegister(false); 
                 alert("Account created! Log in."); 
             } else { 
-                // --- SAVE TO LOCAL STORAGE ON LOGIN ---
                 localStorage.setItem('battlemat_token', data.token);
                 localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                
                 onLogin(data.user, data.token); 
                 onClose(); 
             }
@@ -117,7 +115,7 @@ const AuthModal = ({ onClose, onLogin }) => {
     );
 };
 
-// --- GROUPS MODAL (UPDATED WITH ADMIN) ---
+// --- GROUPS MODAL ---
 const GroupsModal = ({ user, onClose, onUpdateUser }) => {
     const [view, setView] = useState('list');
     const [newGroupName, setNewGroupName] = useState("");
@@ -166,7 +164,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
         } catch(err) { console.error(err); }
     };
     
-    // --- NEW: HANDLE LEAVE ---
     const handleLeave = async () => {
         if(!window.confirm("Are you sure you want to leave this group?")) return;
         try {
@@ -177,11 +174,10 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
             });
             const updatedGroups = await res.json();
             onUpdateUser({...user, groups: updatedGroups});
-            setView('list'); // Go back to list
+            setView('list'); 
         } catch (err) { alert("Error leaving group"); }
     };
 
-    // --- NEW: HANDLE KICK (Admin) ---
     const handleKick = async (targetId) => {
         if(!window.confirm("Kick this user?")) return;
         try {
@@ -191,11 +187,10 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
                 body: JSON.stringify({ requesterId: user.id, targetId, groupId: groupDetails._id })
             });
             if (!res.ok) throw new Error("Failed to kick");
-            // Refresh details locally
             const updatedMembers = groupDetails.members.filter(m => m._id !== targetId);
             const updatedDetails = { ...groupDetails, members: updatedMembers };
             setGroupDetails(updatedDetails);
-            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); // Recalc stats
+            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); 
         } catch (err) { alert(err.message); }
     };
 
@@ -268,7 +263,6 @@ const GroupsModal = ({ user, onClose, onUpdateUser }) => {
         }
     };
     
-    // Check if current user is admin of this group
     const isAdmin = groupDetails && groupDetails.admins && groupDetails.admins.includes(user.id);
 
     return (
@@ -493,7 +487,7 @@ const DeckSelectionModal = ({ user, token, onConfirm, onOpenProfile, onUpdateUse
                                 value={selectedDeckId} 
                                 onChange={e => {
                                     if(e.target.value === "ADD_NEW") {
-                                        onOpenProfile(); // This is handled by the parent to close this modal too
+                                        onOpenProfile(); 
                                     } else {
                                         setSelectedDeckId(e.target.value);
                                         setWasRandomlyPicked(false);
@@ -637,7 +631,7 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY (UPDATED: LOGOUT BUTTON ADDED) ---
+// --- LOBBY ---
 const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout, onOpenGroups }) => {
   const [step, setStep] = useState('mode'); 
   const [videoDevices, setVideoDevices] = useState([]);
@@ -730,7 +724,6 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
   
   const handleSpectate = () => { if (previewStream) previewStream.getTracks().forEach(t => t.stop()); onJoin(true, null); };
 
-  // Sort Decks for Dropdown
   const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
 
   if (step === 'mode') {
@@ -739,13 +732,11 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
         <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
         {user ? (
             <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                {/* --- LOGOUT BUTTON MOVED HERE --- */}
                 <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
 
                 <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
                 <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
                     <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
-                    {/* --- GROUPS BUTTON --- */}
                     <button onClick={onOpenGroups} style={{padding: '8px 16px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👥 Groups</button>
                 </div>
             </div>
@@ -753,7 +744,6 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
             <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
         )}
         <div style={{ display: 'flex', gap: '30px' }}>
-            {/* --- UPDATED: BUTTON DISABLED IF NO USER --- */}
             <button 
                 onClick={() => user && setStep('setup')} 
                 disabled={!user}
@@ -801,7 +791,6 @@ const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, s
                 </div>
 
                 <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                    {/* --- UPDATED DROPDOWN WITH SORT & ADD OPTION --- */}
                     <select 
                         value={selectedDeckId} 
                         onChange={e => {
@@ -1002,8 +991,6 @@ const CardModal = ({ cardData, onClose }) => {
 
 // --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
 const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
-  // Logic simplified: No inputs, just display.
-  
   if (secretData) {
       if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
       return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
@@ -1110,7 +1097,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             
-            {/* --- NAME BAR OVERLAY --- */}
             {playerData?.username && (
                 <div style={{ position: 'absolute', bottom: '0', left: '0', width: '100%', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', color: 'white', fontSize: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', zIndex: 45 }}>
                     {playerData.username}
@@ -1247,8 +1233,8 @@ function App() {
   const [showProfile, setShowProfile] = useState(false);
   const [selectedDeckId, setSelectedDeckId] = useState("");
   const [showFinishModal, setShowFinishModal] = useState(false); 
-  const [showDeckSelect, setShowDeckSelect] = useState(false); // NEW STATE for between-games
-  const [hostId, setHostId] = useState(null); // --- NEW: HOST ID STATE
+  const [showDeckSelect, setShowDeckSelect] = useState(false); 
+  const [hostId, setHostId] = useState(null); 
 
   const gameStateRef = useRef({});
   const seatOrderRef = useRef([]);
@@ -1287,43 +1273,57 @@ function App() {
     setShowProfile(false);
   };
   
-  const refreshUserData = async () => {
-    if (!user || !token) return;
-    // Since we don't have a specific 'get-user' route, we rely on the finish-game response 
-    // or we could re-login silently. 
-    // For now, the finish-game logic updates the local state via setUser in handleRecordStat/finishGame 
-    // if we modified the response structure.
-    
-    // Better yet, just re-fetch the profile.
-    // ... Actually, the current finish-game route doesn't return the updated user object.
-    // Let's rely on the optimistic UI updates or create a refresh route later if needed.
-    // For now, auto-syncing the state is enough.
-  };
-
+  // --- UPDATED GAME UPDATE LOGIC (FIXES DESYNC) ---
   const handleUpdateGame = useCallback((targetUserId, updates, cmdDmgUpdate = null) => {
-    if (targetUserId && updates && targetUserId === myId) {
-      setGameState(prev => {
-        const newData = { ...prev[myId], ...updates };
-        socket.emit('update-game-state', { userId: myId, data: newData });
-        return { ...prev, [myId]: newData };
-      });
+    // 1. Direct Updates (Life, Poison, Tokens, etc.)
+    if (targetUserId && updates) {
+        // Optimistic local update for self
+        if (targetUserId === myId) {
+            setGameState(prev => ({
+                ...prev,
+                [myId]: { ...prev[myId], ...updates }
+            }));
+        } else {
+            // Optimistic update for others (e.g. Poison logic)
+            setGameState(prev => ({
+                ...prev,
+                [targetUserId]: { ...prev[targetUserId], ...updates }
+            }));
+        }
+        // Emit DELTA (only changes) to server
+        socket.emit('update-game-state', { userId: targetUserId, data: updates });
     }
+
+    // 2. Commander Damage Logic
     if (cmdDmgUpdate) {
-      const { opponentId, type, amount } = cmdDmgUpdate; 
-      setGameState(prev => {
-        const myData = prev[myId] || {};
-        const allCmdDmg = myData.cmdDamageTaken || {};
-        const specificOppDmg = allCmdDmg[opponentId] || { primary: 0, partner: 0 };
-        const currentCmdDmg = specificOppDmg[type] || 0;
-        const newCmdDmg = Math.max(0, currentCmdDmg + amount);
-        let newLife = myData.life ?? 40;
-        if (newCmdDmg !== currentCmdDmg) newLife -= (newCmdDmg - currentCmdDmg);
-        const newOppDmg = { ...specificOppDmg, [type]: newCmdDmg };
-        const newAllCmdDmg = { ...allCmdDmg, [opponentId]: newOppDmg };
-        const newMyData = { ...myData, cmdDamageTaken: newAllCmdDmg, life: newLife };
-        socket.emit('update-game-state', { userId: myId, data: newMyData });
-        return { ...prev, [myId]: newMyData };
-      });
+        const { opponentId, type, amount } = cmdDmgUpdate;
+        setGameState(prev => {
+            const myData = prev[myId] || {};
+            const allCmdDmg = myData.cmdDamageTaken || {};
+            const specificOppDmg = allCmdDmg[opponentId] || { primary: 0, partner: 0 };
+            
+            const currentVal = specificOppDmg[type] || 0;
+            const newVal = Math.max(0, currentVal + amount);
+            
+            // Construct Delta for cmd damage
+            const diff = {
+                cmdDamageTaken: {
+                    ...allCmdDmg,
+                    [opponentId]: { ...specificOppDmg, [type]: newVal }
+                }
+            };
+
+            // Calculate implied life change
+            // (We calculate delta here so we don't overwrite life if it changed elsewhere)
+            let newLife = myData.life ?? 40;
+            if (newVal !== currentVal) newLife -= (newVal - currentVal);
+            diff.life = newLife;
+
+            // Emit DELTA
+            socket.emit('update-game-state', { userId: myId, data: diff });
+            
+            return { ...prev, [myId]: { ...myData, ...diff } };
+        });
     }
   }, [myId]);
 
@@ -1346,7 +1346,6 @@ function App() {
       socket.emit('claim-status', { type, userId: myId });
   };
 
-  // --- NEW: HANDLE LEAVE GAME (CLEANUP) ---
   const handleLeaveGame = () => {
       if(!window.confirm("Leave current game?")) return;
       
@@ -1380,12 +1379,11 @@ function App() {
       } catch (err) { console.error(err); }
   };
 
-  // --- HANDLE DECK CONFIRM (BETWEEN GAMES) ---
   const handleDeckConfirm = (deckData, isSecret, deckId) => {
-      setSelectedDeckId(deckId); // Update local deck selection
+      setSelectedDeckId(deckId); 
       
       const updates = { 
-          deckId: deckId, // Store deck ID for next game tracking
+          deckId: deckId, 
           commanders: {}, 
           secretCommanders: null 
       };
@@ -1416,12 +1414,11 @@ function App() {
               body: JSON.stringify({ results })
           });
           
-          // FETCH FRESH STATS
           if (user && user.id) {
             const res = await fetch(`${API_URL}/user/${user.id}`);
             const updatedUser = await res.json();
-            setUser(updatedUser); // Update local state immediately
-            localStorage.setItem('battlemat_user', JSON.stringify(updatedUser)); // Update storage
+            setUser(updatedUser); 
+            localStorage.setItem('battlemat_user', JSON.stringify(updatedUser)); 
           }
           
           const newGameState = {};
@@ -1595,19 +1592,8 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  useEffect(() => {
-    const interval = setInterval(() => {
-        if (myIdRef.current && gameStateRef.current[myIdRef.current] && !isSpectator) {
-            socket.emit('update-game-state', {
-                userId: myIdRef.current,
-                data: gameStateRef.current[myIdRef.current]
-            });
-        }
-    }, 2000); 
-    return () => clearInterval(interval);
-  }, [isSpectator]);
+  // --- REMOVED THE HEARTBEAT SETINTERVAL TO PREVENT DESYNC ---
 
-  // --- JOIN GAME: HANDLES DECK FETCH, SECRET COMMANDER & USERNAME ---
   const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
     setIsSpectator(spectatorMode);
@@ -1619,12 +1605,10 @@ function App() {
         myPeer.on('open', id => {
           setMyId(id);
           
-          // CONSTRUCT INITIAL STATE
           const initialData = { 
               life: 40, poison: 0, cmdDamageTaken: {}, tokens: [], cameraRatio: '16:9',
               commanders: {}, 
               secretCommanders: null,
-              // Store user info in gameState for namebars and stats
               username: user ? user.username : `Guest ${id.substr(0,4)}`,
               dbId: user ? user.id : null,
               deckId: selectedDeckId || null
@@ -1647,6 +1631,7 @@ function App() {
           socket.emit('join-room', ROOM_ID, id, spectatorMode);
           
           if (!spectatorMode) {
+              // Initial sync: Send everything for the first time
               socket.emit('update-game-state', { userId: id, data: initialData });
           }
         });
@@ -1707,7 +1692,6 @@ function App() {
     socket.on('game-reset', ({ gameState: newGS, turnState: newTS }) => { 
         setGameState(newGS); 
         setTurnState(newTS); 
-        // --- NEW: FORCE DECK SELECTION ON RESET ---
         setShowDeckSelect(true);
     });
     socket.on('seat-order-updated', (newOrder) => { 
@@ -1734,7 +1718,6 @@ function App() {
         });
     });
 
-    // --- HOST UPDATE HANDLER ---
     socket.on('host-update', (newHostId) => {
         setHostId(newHostId);
     });
@@ -1756,11 +1739,8 @@ function App() {
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
 
-  // --- DERIVE PLAYERS FOR FINISH MODAL ---
   const activePlayers = seatOrder.map(id => ({ id, username: gameState[id]?.username }));
-
-  // --- IS HOST? ---
-  const isHost = myId === hostId; // --- THIS WAS THE MISSING LINE
+  const isHost = myId === hostId; 
 
   return (
     <>
@@ -1778,7 +1758,6 @@ function App() {
       
       {showGroups && user && <GroupsModal user={user} onClose={() => setShowGroups(false)} onUpdateUser={setUser} />}
 
-      {/* UPDATED: Pass setShowDeckSelect(false) to close modal */}
       {showDeckSelect && hasJoined && !isSpectator && <DeckSelectionModal user={user} token={token} onConfirm={handleDeckConfirm} onOpenProfile={() => { setShowProfile(true); setShowDeckSelect(false); }} onUpdateUser={setUser} />}
 
       {!hasJoined && (
