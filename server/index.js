@@ -24,7 +24,16 @@ app.use(cors(corsOptions));
 app.use(express.json());
 
 const server = createServer(app);
-const io = new Server(server, { cors: corsOptions });
+
+// --- ANTI-DESYNC: Enabled Connection State Recovery ---
+// Buffers packets for 2 mins to handle minor Wi-Fi drops
+const io = new Server(server, { 
+    cors: corsOptions,
+    connectionStateRecovery: {
+        maxDisconnectionDuration: 2 * 60 * 1000, 
+        skipMiddlewares: true,
+    }
+});
 
 if (MONGO_URI) {
     mongoose.connect(MONGO_URI)
@@ -35,7 +44,6 @@ if (MONGO_URI) {
 }
 
 // --- ROUTES ---
-
 const generateCode = () => Math.random().toString(36).substring(2, 8).toUpperCase();
 
 app.get('/user/:id', async (req, res) => {
@@ -53,21 +61,16 @@ app.get('/user/:id', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- UPDATED: CREATE GROUP (Adds Admin) ---
 app.post('/create-group', async (req, res) => {
     try {
         const { userId, name } = req.body;
         const user = await User.findById(userId);
         if(!user) return res.status(404).json({msg: "User not found"});
-
         const code = generateCode();
-        // Creator is both Member and Admin
         const newGroup = new Group({ name, code, members: [userId], admins: [userId] });
         await newGroup.save();
-
         user.groups.push(newGroup._id);
         await user.save();
-
         const populatedUser = await User.findById(userId).populate('groups');
         res.json(populatedUser.groups);
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -78,90 +81,61 @@ app.post('/join-group', async (req, res) => {
         const { userId, code } = req.body;
         const user = await User.findById(userId);
         const group = await Group.findOne({ code });
-
-        if(!user) return res.status(404).json({msg: "User not found"});
-        if(!group) return res.status(404).json({msg: "Group not found"});
+        if(!user || !group) return res.status(404).json({msg: "Not found"});
         if(group.members.includes(userId)) return res.status(400).json({msg: "Already in group"});
-
         group.members.push(userId);
         await group.save();
-
         user.groups.push(group._id);
         await user.save();
-
         const populatedUser = await User.findById(userId).populate('groups');
         res.json(populatedUser.groups);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- NEW: LEAVE GROUP (Handles Delete if Empty) ---
 app.post('/leave-group', async (req, res) => {
     try {
         const { userId, groupId } = req.body;
-        
-        // 1. Remove group from User's list
         const user = await User.findById(userId);
         if(user) {
             user.groups = user.groups.filter(g => g.toString() !== groupId);
             await user.save();
         }
-
-        // 2. Remove user from Group's members/admins
         const group = await Group.findById(groupId);
         if(group) {
             group.members = group.members.filter(m => m.toString() !== userId);
             group.admins = group.admins.filter(a => a.toString() !== userId);
-            
-            // 3. Check if empty
             if (group.members.length === 0) {
                 await Group.findByIdAndDelete(groupId);
-                console.log(`Group ${groupId} deleted (empty).`);
             } else {
                 await group.save();
             }
         }
-
         const populatedUser = await User.findById(userId).populate('groups');
         res.json(populatedUser ? populatedUser.groups : []);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-// --- NEW: KICK MEMBER (Admin Only) ---
 app.post('/kick-member', async (req, res) => {
     try {
         const { requesterId, targetId, groupId } = req.body;
-        
         const group = await Group.findById(groupId);
         if(!group) return res.status(404).json({msg: "Group not found"});
-
-        // Check if requester is admin
-        if (!group.admins.includes(requesterId)) {
-            return res.status(403).json({msg: "Only admins can kick members."});
-        }
-
-        // Remove from Group
+        if (!group.admins.includes(requesterId)) return res.status(403).json({msg: "Admin only."});
         group.members = group.members.filter(m => m.toString() !== targetId);
-        group.admins = group.admins.filter(a => a.toString() !== targetId); // Remove admin status too if they had it
+        group.admins = group.admins.filter(a => a.toString() !== targetId);
         await group.save();
-
-        // Remove from Target User
         const targetUser = await User.findById(targetId);
         if(targetUser) {
             targetUser.groups = targetUser.groups.filter(g => g.toString() !== groupId);
             await targetUser.save();
         }
-
         res.json({ msg: "User kicked" });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
 app.get('/group-details/:groupId', async (req, res) => {
     try {
-        const group = await Group.findById(req.params.groupId)
-            .populate({
-                path: 'members',
-                select: 'username stats decks matchHistory' 
-            });
+        const group = await Group.findById(req.params.groupId).populate({ path: 'members', select: 'username stats decks matchHistory' });
         res.json(group);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
@@ -169,7 +143,6 @@ app.get('/group-details/:groupId', async (req, res) => {
 app.post('/register', async (req, res) => {
     try {
         const { username, password } = req.body;
-        if (!username || !password) return res.status(400).json({ msg: "Missing fields" });
         const existingUser = await User.findOne({ username });
         if (existingUser) return res.status(400).json({ msg: "Username taken" });
         const salt = await bcrypt.genSalt(10);
@@ -188,17 +161,7 @@ app.post('/login', async (req, res) => {
         const isMatch = await bcrypt.compare(password, user.password);
         if (!isMatch) return res.status(400).json({ msg: "Invalid credentials" });
         const token = jwt.sign({ id: user._id }, JWT_SECRET, { expiresIn: '7d' });
-        res.json({ 
-            token, 
-            user: { 
-                id: user._id, 
-                username: user.username, 
-                stats: user.stats, 
-                decks: user.decks, 
-                deckCycleHistory: user.deckCycleHistory,
-                groups: user.groups 
-            } 
-        });
+        res.json({ token, user: { id: user._id, username: user.username, stats: user.stats, decks: user.decks, deckCycleHistory: user.deckCycleHistory, groups: user.groups } });
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -224,44 +187,16 @@ app.delete('/delete-deck', async (req, res) => {
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
-app.post('/update-stats', async (req, res) => {
-    try {
-        const { userId, win, loss, deckId } = req.body;
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ msg: "User not found" });
-
-        if (win) user.stats.wins += 1;
-        if (loss) user.stats.losses += 1;
-        user.stats.gamesPlayed += 1;
-
-        if (deckId) {
-            const deck = user.decks.find(d => d._id.toString() === deckId);
-            if (deck) {
-                if (win) deck.wins += 1;
-                if (loss) deck.losses += 1;
-            }
-        }
-
-        await user.save();
-        res.json({ stats: user.stats, decks: user.decks });
-    } catch (err) { res.status(500).json({ error: err.message }); }
-});
-
 app.post('/finish-game', async (req, res) => {
     try {
         const { results } = req.body; 
-        console.log("Finishing game with results:", results);
-
         const updates = results.map(async (player) => {
             if (!player.userId) return; 
-            
             const user = await User.findById(player.userId);
             if (!user) return;
-
             user.stats.gamesPlayed = (user.stats.gamesPlayed || 0) + 1;
             if (player.result === 'win') user.stats.wins = (user.stats.wins || 0) + 1;
             if (player.result === 'loss') user.stats.losses = (user.stats.losses || 0) + 1;
-
             if (player.deckId) {
                 const deckIndex = user.decks.findIndex(d => d._id.toString() === player.deckId);
                 if (deckIndex !== -1) {
@@ -269,38 +204,12 @@ app.post('/finish-game', async (req, res) => {
                     if (player.result === 'loss') user.decks[deckIndex].losses = (user.decks[deckIndex].losses || 0) + 1;
                 }
             }
-            
-            user.matchHistory.push({
-                result: player.result,
-                deckId: player.deckId,
-                date: new Date()
-            });
-
-            user.markModified('stats');
-            user.markModified('decks');
-            user.markModified('matchHistory'); 
+            user.matchHistory.push({ result: player.result, deckId: player.deckId, date: new Date() });
+            user.markModified('stats'); user.markModified('decks'); user.markModified('matchHistory'); 
             return user.save();
         });
-
         await Promise.all(updates);
         res.json({ msg: "Game recorded" });
-    } catch (err) { 
-        console.error(err);
-        res.status(500).json({ error: err.message }); 
-    }
-});
-
-app.post('/reset-stats', async (req, res) => {
-    try {
-        const { userId } = req.body;
-        const user = await User.findById(userId);
-        if (!user) return res.status(404).json({ msg: "User not found" });
-        user.stats = { wins: 0, losses: 0, gamesPlayed: 0, commanderDamageDealt: 0 };
-        user.matchHistory = []; 
-        user.markModified('stats');
-        user.markModified('matchHistory');
-        await user.save();
-        res.json(user.stats);
     } catch (err) { res.status(500).json({ error: err.message }); }
 });
 
@@ -309,14 +218,8 @@ app.post('/record-deck-usage', async (req, res) => {
         const { userId, deckId, resetCycle } = req.body;
         const user = await User.findById(userId);
         if (!user) return res.status(404).json({ msg: "User not found" });
-
-        if (resetCycle) {
-            user.deckCycleHistory = [deckId]; 
-        } else {
-            if (!user.deckCycleHistory.includes(deckId)) {
-                user.deckCycleHistory.push(deckId);
-            }
-        }
+        if (resetCycle) user.deckCycleHistory = [deckId]; 
+        else if (!user.deckCycleHistory.includes(deckId)) user.deckCycleHistory.push(deckId);
         await user.save();
         res.json(user.deckCycleHistory);
     } catch (err) { res.status(500).json({ error: err.message }); }
@@ -332,7 +235,6 @@ const roomData = {};
 app.get('/', (req, res) => { res.send('BattleMat Server Running'); });
 
 io.on('connection', (socket) => {
-    
     socket.on('join-room', async (roomId, userId, isSpectator) => {
         socket.join(roomId);
         socketToRoom[socket.id] = roomId;
@@ -359,7 +261,6 @@ io.on('connection', (socket) => {
         if ((!currentHostId || !hostIsHere) && !isSpectator) {
             roomHosts[roomId] = userId;
             currentHostId = userId;
-            console.log(`Host assigned to: ${userId}`);
         }
 
         io.to(roomId).emit('host-update', currentHostId);
@@ -373,9 +274,10 @@ io.on('connection', (socket) => {
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
 
+    // --- ANTI-DESYNC: Atomic Merging ---
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
-        if (roomId) {
+        if (roomId && roomData[roomId]) {
             if (!roomData[roomId].gameState[userId]) roomData[roomId].gameState[userId] = {};
             roomData[roomId].gameState[userId] = { ...roomData[roomId].gameState[userId], ...data };
             socket.to(roomId).emit('game-state-updated', { userId, data });
@@ -406,41 +308,24 @@ io.on('connection', (socket) => {
     socket.on('disconnect', () => {
         const roomId = socketToRoom[socket.id];
         const userId = socketToUser[socket.id];
-        
         if (roomId && userId) {
             socket.to(roomId).emit('user-disconnected', userId); 
-            
             if (roomHosts[roomId] === userId) {
                 const roomSockets = io.sockets.adapter.rooms.get(roomId);
                 let newHostFound = false;
-
                 if (roomSockets) {
                     for (const socketId of roomSockets) {
                         if (socketId !== socket.id && !socketIsSpectator[socketId]) {
                             const newHostId = socketToUser[socketId];
-                            if (newHostId) {
-                                roomHosts[roomId] = newHostId;
-                                io.to(roomId).emit('host-update', newHostId);
-                                newHostFound = true;
-                                break; 
-                            }
+                            if (newHostId) { roomHosts[roomId] = newHostId; io.to(roomId).emit('host-update', newHostId); newHostFound = true; break; }
                         }
                     }
                 }
-
-                if (!newHostFound) {
-                    delete roomHosts[roomId];
-                }
+                if (!newHostFound) delete roomHosts[roomId];
             }
         }
-        
-        delete socketToRoom[socket.id];
-        delete socketToUser[socket.id];
-        delete socketIsSpectator[socket.id];
+        delete socketToRoom[socket.id]; delete socketToUser[socket.id]; delete socketIsSpectator[socket.id];
     });
 });
 
-process.on('uncaughtException', err => { console.error(err); process.exit(1); });
-server.listen(PORT, '0.0.0.0', () => { 
-    console.log(`Server running on port ${PORT}`); 
-});
+server.listen(PORT, '0.0.0.0', () => console.log(`Server running on port ${PORT}`));
