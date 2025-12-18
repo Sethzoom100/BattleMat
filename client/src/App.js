@@ -1592,7 +1592,18 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  // --- REMOVED THE HEARTBEAT SETINTERVAL TO PREVENT DESYNC ---
+  // --- COMMENTED OUT TO PREVENT REVERTING ---
+  // useEffect(() => {
+  //   const interval = setInterval(() => {
+  //       if (myIdRef.current && gameStateRef.current[myIdRef.current] && !isSpectator) {
+  //           socket.emit('update-game-state', {
+  //               userId: myIdRef.current,
+  //               data: gameStateRef.current[myIdRef.current]
+  //           });
+  //       }
+  //   }, 2000); 
+  //   return () => clearInterval(interval);
+  // }, [isSpectator]);
 
   const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
@@ -1679,13 +1690,14 @@ function App() {
     });
 
     // --- FIXED: LISTEN FOR FULL STATE (INCLUDING TURN) ---
+    // --- THIS UNPACKS THE 'gameState' and 'turnState' correctly ---
     socket.on('full-state-sync', (data) => { 
         if (data) {
-            // Unpack Game State
+            // Unpack Game State (Fixes 40 Life/No Commander)
             if (data.gameState) {
                 setGameState(prev => ({ ...prev, ...data.gameState }));
             }
-            // Unpack Turn State (FIXES YELLOW HIGHLIGHT DESYNC)
+            // Unpack Turn State (Fixes Yellow Highlight)
             if (data.turnState) {
                 setTurnState(data.turnState);
             }
