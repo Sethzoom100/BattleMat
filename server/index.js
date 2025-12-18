@@ -354,7 +354,7 @@ io.on('connection', (socket) => {
 
         io.to(roomId).emit('host-update', currentHostId);
         
-        // --- FIXED: Use 'full-state-sync' to match client ---
+        // --- KEY FIX: Use 'full-state-sync' to match client listener ---
         socket.emit('full-state-sync', roomData[roomId]);
         
         socket.emit('all-users', activeUsers.filter(id => id !== userId));
@@ -366,14 +366,14 @@ io.on('connection', (socket) => {
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
 
-    // --- DELTA UPDATE HANDLER (Source of Truth) ---
+    // --- DELTA UPDATE HANDLER ---
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) {
             if (!roomData[roomId].gameState[userId]) roomData[roomId].gameState[userId] = {};
-            // Merge and Save
+            // Server maintains Source of Truth by merging
             roomData[roomId].gameState[userId] = { ...roomData[roomId].gameState[userId], ...data };
-            // Broadcast
+            // Broadcast delta
             socket.to(roomId).emit('game-state-updated', { userId, data });
         }
     });
