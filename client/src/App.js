@@ -1037,7 +1037,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// --- UPDATED: MOVED SETTINGS MENU OUTSIDE OF CLIPPING CONTAINER ---
+// --- UPDATED: MOVED SETTINGS MENU OUTSIDE OF CLIPPING CONTAINER & CLEANED UP ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -1135,8 +1135,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
 
-            {/* SETTINGS MENU WAS HERE - REMOVED */}
-
             <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
             <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
@@ -1173,12 +1171,13 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
                 {isMyStream && (
                     <>
-                        <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
+                        {/* --- REMOVED CAMERA RATIO BUTTON --- */}
+                        {/* --- REMOVED BACK TO LOBBY BUTTON --- */}
+                        
                         <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                         <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                         
                         <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
-                        <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
 
                         <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
                         <div style={{padding: '8px', borderTop: '1px solid #444'}}>
@@ -1637,7 +1636,6 @@ function App() {
           socket.emit('join-room', ROOM_ID, id, spectatorMode);
           
           if (!spectatorMode) {
-              // Initial sync: Send everything for the first time
               socket.emit('update-game-state', { userId: id, data: initialData });
           }
         });
@@ -1688,11 +1686,9 @@ function App() {
     // --- THIS UNPACKS THE 'gameState' and 'turnState' correctly ---
     socket.on('full-state-sync', (data) => { 
         if (data) {
-            // Unpack Game State (Fixes 40 Life/No Commander)
             if (data.gameState) {
                 setGameState(prev => ({ ...prev, ...data.gameState }));
             }
-            // Unpack Turn State (Fixes Yellow Highlight)
             if (data.turnState) {
                 setTurnState(data.turnState);
             }
@@ -1816,6 +1812,10 @@ function App() {
               <div style={{position: 'absolute', left: '50%', transform: 'translateX(-50%)'}}><HeaderSearchBar onCardFound={handleGlobalCardFound} onToggleHistory={() => setShowHistory(!showHistory)} /></div>
               <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
                 <button onClick={handleInvite} style={{background: '#3b82f6', border: '1px solid #2563eb', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🔗 {inviteText}</button>
+                {/* --- ADDED LEAVE BUTTON HERE --- */}
+                {!isSpectator && (
+                    <button onClick={handleLeaveGame} style={{background: '#333', border: '1px solid #555', color: '#fca5a5', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🚪 Leave Game</button>
+                )}
                 {!isSpectator && isHost && (
                     <>
                     <button onClick={() => setShowFinishModal(true)} style={{background: '#b91c1c', border: '1px solid #7f1d1d', color: '#fff', cursor: 'pointer', padding: '2px 8px', borderRadius: '4px', fontSize: '11px', fontWeight: 'bold'}}>🏆 FINISH GAME</button>
