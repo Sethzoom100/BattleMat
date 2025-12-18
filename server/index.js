@@ -353,7 +353,10 @@ io.on('connection', (socket) => {
         }
 
         io.to(roomId).emit('host-update', currentHostId);
-        socket.emit('sync-state', roomData[roomId]);
+        
+        // --- FIXED: Use 'full-state-sync' to match client listener ---
+        socket.emit('full-state-sync', roomData[roomId]);
+        
         socket.emit('all-users', activeUsers.filter(id => id !== userId));
         socket.to(roomId).emit('user-connected', userId, isSpectator);
     });
@@ -363,8 +366,7 @@ io.on('connection', (socket) => {
         if (roomId) io.to(roomId).emit('status-claimed', { type, userId });
     });
 
-    // --- DELTA UPDATE HANDLER ---
-    // The server just merges what it receives and broadcasts the delta
+    // --- DELTA UPDATE HANDLER (Fixes State Overwrites) ---
     socket.on('update-game-state', ({ userId, data }) => {
         const roomId = socketToRoom[socket.id];
         if (roomId) {
