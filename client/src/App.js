@@ -1745,10 +1745,17 @@ function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []); 
 
+  // --- FIXED addPeer FUNCTION ---
+  // Uses gameStateRef to avoid overwriting data if it already exists
   function addPeer(id, stream, call) {
     if (call) peersRef.current[id] = call;
     setPeers(prev => prev.some(p => p.id === id) ? prev : [...prev, { id, stream }]);
-    if(!gameState[id]) setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
+    
+    // Only initialize default state if we DON'T have data for this user yet
+    if(!gameStateRef.current[id]) {
+        setGameState(prev => ({ ...prev, [id]: { life: 40 } }));
+    }
+    
     setSeatOrder(prev => { if(prev.includes(id)) return prev; return [...prev, id]; });
   }
 
