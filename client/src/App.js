@@ -926,17 +926,50 @@ const TokenSearchBar = ({ onSelect }) => {
   );
 };
 
+// --- UPDATED: LIFE COUNTER (Fits inside the top bar) ---
 const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
   const [isEditing, setIsEditing] = useState(false);
   const [val, setVal] = useState(life);
+  
   useEffect(() => { setVal(life); }, [life]);
-  const handleFinish = () => { setIsEditing(false); const num = parseInt(val); if (!isNaN(num)) onLifeSet(num); else setVal(life); };
+  
+  const handleFinish = () => { 
+      setIsEditing(false); 
+      const num = parseInt(val); 
+      if (!isNaN(num)) onLifeSet(num); 
+      else setVal(life); 
+  };
+
   return (
-    <div style={{ position: 'absolute', top: '15px', left: '15px', zIndex: 30, background: 'rgba(0,0,0,0.7)', borderRadius: '30px', padding: '6px 12px', display: 'flex', alignItems: 'center', gap: '12px', border: '1px solid rgba(255,255,255,0.15)', backdropFilter: 'blur(5px)', boxShadow: '0 4px 8px rgba(0,0,0,0.6)' }}>
-      {isMyStream && <button onClick={() => onLifeChange(-1)} style={roundBtnLarge}>-</button>}
-      {isEditing ? <input autoFocus type="number" value={val} onChange={(e) => setVal(e.target.value)} onBlur={handleFinish} onKeyDown={(e) => e.key === 'Enter' && handleFinish()} style={{ width: '50px', background: 'transparent', border: 'none', color: 'white', fontSize: '28px', fontWeight: 'bold', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }} />
-      : <span onClick={() => isMyStream && setIsEditing(true)} style={{ fontSize: '28px', fontWeight: 'bold', color: 'white', minWidth: '40px', textAlign: 'center', fontFamily: 'monospace', textShadow: '0 2px 4px black', cursor: isMyStream ? 'pointer' : 'default' }}>{life}</span>}
-      {isMyStream && <button onClick={() => onLifeChange(1)} style={roundBtnLarge}>+</button>}
+    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '10px', paddingRight: '10px', borderRight: '1px solid #444' }}>
+      {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(-1); }} style={roundBtnLarge}>-</button>}
+      
+      {isEditing ? (
+          <input 
+            autoFocus 
+            type="number" 
+            value={val} 
+            onChange={(e) => setVal(e.target.value)} 
+            onBlur={handleFinish} 
+            onKeyDown={(e) => e.key === 'Enter' && handleFinish()} 
+            onClick={(e) => e.stopPropagation()}
+            style={{ width: '40px', background: 'transparent', border: 'none', color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }} 
+          />
+      ) : (
+          <span 
+            onClick={(e) => { 
+                if(isMyStream) {
+                    e.stopPropagation(); 
+                    setIsEditing(true);
+                }
+            }} 
+            style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', minWidth: '36px', textAlign: 'center', fontFamily: 'monospace', cursor: isMyStream ? 'pointer' : 'default' }}
+          >
+            {life}
+          </span>
+      )}
+      
+      {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(1); }} style={roundBtnLarge}>+</button>}
     </div>
   );
 };
@@ -989,11 +1022,20 @@ const CardModal = ({ cardData, onClose }) => {
   );
 };
 
-// --- UPDATED: COMMANDER LABEL (READ-ONLY) ---
-const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, onLeave, secretData, onReveal }) => {
+// --- UPDATED: COMMANDER LABEL (Simplified for Top Bar) ---
+const CommanderLabel = ({ cardData, isMyStream, onHover, onLeave, secretData, onReveal }) => {
   if (secretData) {
-      if (isMyStream) return <button onClick={onReveal} style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '10px', fontWeight: 'bold', cursor: 'pointer', padding: '2px 6px', borderRadius: '4px'}}>👁 Reveal {secretData.name}</button>;
-      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>🙈 Hidden</span>;
+      if (isMyStream) {
+          return (
+            <button 
+                onClick={(e) => { e.stopPropagation(); onReveal(); }} 
+                style={{background: '#b45309', border: '1px solid #f59e0b', color: 'white', fontSize: '9px', fontWeight: 'bold', cursor: 'pointer', padding: '1px 4px', borderRadius: '2px'}}
+            >
+                Reveal {secretData.name}
+            </button>
+          );
+      }
+      return <span style={{color: '#777', fontStyle: 'italic', fontSize: '10px'}}>Hidden Commander</span>;
   }
 
   if (cardData) {
@@ -1001,14 +1043,14 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
         <span 
             onMouseEnter={() => onHover(cardData)} 
             onMouseLeave={onLeave} 
-            style={{ cursor: 'help', textDecoration: 'underline', textDecorationColor: '#666', fontWeight: 'bold', fontSize: '10px' }}
+            style={{ cursor: 'help', color: '#ccc', fontSize: '11px', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis', maxWidth: '180px', display: 'block' }}
         >
             {cardData.name}
         </span>
       );
   }
 
-  return <span style={{color: '#777', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
+  return <span style={{color: '#555', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClose }) => {
@@ -1037,7 +1079,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// --- UPDATED: MOVED SETTINGS MENU OUTSIDE OF CLIPPING CONTAINER & CLEANED UP ---
+// --- UPDATED: VIDEO CONTAINER (SpellTable Style) ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -1084,27 +1126,84 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   let finalH = width / TARGET_RATIO;
   if (finalH > height) { finalH = height; finalW = height * TARGET_RATIO; }
 
+  // Combine primary and partner for the label
+  const primary = playerData?.commanders?.primary;
+  const partner = playerData?.commanders?.partner;
+
   return (
     <div 
         draggable={isHost} 
         onDragStart={(e) => isHost && onDragStart(e, userId)} 
         onDragOver={(e) => isHost && e.preventDefault()} 
         onDrop={(e) => isHost && onDrop(e, userId)} 
-        // --- ADDED position: relative ---
         style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default', position: 'relative' }}
     >
-      <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
+      <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden', position: 'relative' }}>
+        
+        {/* --- NEW TOP BAR --- */}
+        <div style={{
+            position: 'absolute', top: 0, left: 0, right: 0, height: '50px',
+            background: 'rgba(0, 0, 0, 0.85)',
+            display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+            padding: '0 10px', zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.1)'
+        }}>
+            
+            {/* LEFT: Life + Info */}
+            <div style={{ display: 'flex', alignItems: 'center', flex: 1, overflow: 'hidden' }}>
+                <BigLifeCounter 
+                    life={life} 
+                    isMyStream={isMyStream} 
+                    onLifeChange={(amt) => updateGame(userId, { life: life + amt })} 
+                    onLifeSet={(val) => updateGame(userId, { life: val })} 
+                />
+                
+                {/* Player Info (Click to Open Damage) */}
+                <div 
+                    onClick={() => setShowDamagePanel(!showDamagePanel)}
+                    title="Click to view Damage / Infect"
+                    style={{ cursor: 'pointer', display: 'flex', flexDirection: 'column', justifyContent: 'center', overflow: 'hidden', paddingRight: '10px' }}
+                >
+                    <div style={{ fontWeight: 'bold', fontSize: '13px', color: 'white', lineHeight: '1.2' }}>
+                        {playerData?.username || "Player"}
+                    </div>
+                    <div style={{ display: 'flex', gap: '4px', alignItems: 'center' }}>
+                        <CommanderLabel 
+                            cardData={primary} 
+                            isMyStream={isMyStream} 
+                            onHover={setHoveredCard} 
+                            onLeave={() => setHoveredCard(null)} 
+                            secretData={playerData?.secretCommanders?.primary}
+                            onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })}
+                        />
+                        {partner && <span style={{color:'#666', fontSize:'10px'}}>+</span>}
+                        {partner && (
+                            <CommanderLabel 
+                                cardData={partner} 
+                                isMyStream={isMyStream} 
+                                onHover={setHoveredCard} 
+                                onLeave={() => setHoveredCard(null)} 
+                                secretData={playerData?.secretCommanders?.partner}
+                                onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })}
+                            />
+                        )}
+                    </div>
+                </div>
+            </div>
+
+            {/* RIGHT: Settings Button */}
+            <button 
+                onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
+                style={{ background: 'transparent', color: '#888', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '5px', display: 'flex', alignItems: 'center' }}
+            >
+                ⚙️
+            </button>
+        </div>
+
         <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
             {!stream && !isDead && <div style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#555', fontSize: '12px'}}>Waiting for Camera...</div>}
             <video ref={videoRef} autoPlay muted={true} style={{ width: '100%', height: '100%', objectFit: 'fill', transform: `rotate(${rotation}deg)` }} />
             {isDead && <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', zIndex: 50, background: 'rgba(0,0,0,0.4)' }}><div style={{ fontSize: '40px' }}>💀</div></div>}
             
-            {playerData?.username && (
-                <div style={{ position: 'absolute', bottom: '0', left: '0', width: '100%', background: 'rgba(0,0,0,0.7)', padding: '4px 10px', color: 'white', fontSize: '12px', fontWeight: 'bold', display: 'flex', justifyContent: 'center', zIndex: 45 }}>
-                    {playerData.username}
-                </div>
-            )}
-
             {hoveredCard && (
                 <div style={{ position: 'absolute', top: '50%', left: '50%', transform: 'translate(-50%, -50%)', zIndex: 60, pointerEvents: 'none', filter: 'drop-shadow(0 0 10px black)', display: 'flex', gap: '5px' }}>
                     <img src={hoveredCard.image} alt="Card" style={{width: '240px', borderRadius: '10px'}} />
@@ -1116,7 +1215,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
-            <div style={{position: 'absolute', top: '80px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
+            {/* Moved Status Icons down to not overlap the new bar */}
+            <div style={{position: 'absolute', top: '60px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
                         onClick={() => handleStatusClick('monarch')}
@@ -1135,45 +1235,17 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
 
-            <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
-            <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
-            <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
-                <div style={{ background: 'rgba(0,0,0,0.6)', padding: '4px 12px', borderRadius: '15px', backdropFilter: 'blur(4px)', display: 'flex', gap: '8px', alignItems: 'center', border: '1px solid rgba(255,255,255,0.1)', color: 'white', position: 'relative', zIndex: 100 }}>
-                <CommanderLabel placeholder="Commander" cardData={playerData?.commanders?.primary} isMyStream={isMyStream} onSelect={(n) => {}} onHover={setHoveredCard} onLeave={() => setHoveredCard(null)} secretData={playerData?.secretCommanders?.primary} onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })} />
-                {(playerData?.commanders?.partner || playerData?.secretCommanders?.partner) && (
-                    <>
-                        <span style={{color: '#666'}}>|</span>
-                        <CommanderLabel 
-                            placeholder="Partner" 
-                            cardData={playerData?.commanders?.partner} 
-                            isMyStream={isMyStream} 
-                            onSelect={(n) => {}} 
-                            onHover={setHoveredCard} 
-                            onLeave={() => setHoveredCard(null)}
-                            secretData={playerData?.secretCommanders?.partner}
-                            onReveal={() => updateGame(userId, { commanders: playerData.secretCommanders, secretCommanders: null })}
-                        />
-                    </>
-                )}
-                </div>
-                <div style={{position: 'relative', zIndex: 10}}><button onClick={() => setShowDamagePanel(!showDamagePanel)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '12px', padding: '4px 12px', fontSize: '11px', fontWeight: 'bold', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px', boxShadow: '0 2px 5px rgba(0,0,0,0.3)', backdropFilter: 'blur(2px)' }}><span style={{color: '#ef4444'}}>🛡</span> Damage</button></div>
-            </div>
-            </div>
             {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClose={() => setShowDamagePanel(false)} />}
         </div>
       </div>
 
-      {/* --- MOVED SETTINGS HERE (Outside Overflow Hidden) --- */}
-      <div style={{position: 'absolute', top: '14px', right: '14px', zIndex: 1000}}>
-        <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
-        {showSettings && (
-            <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '5px', background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column' }}>
+      {/* --- SETTINGS MENU (Shortened & Moved Outside Overflow) --- */}
+      {showSettings && (
+            <div style={{ position: 'absolute', top: '50px', right: '10px', zIndex: 2000, background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.8)' }}>
                 <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
                 {isMyStream && (
                     <>
-                        {/* --- REMOVED CAMERA RATIO BUTTON --- */}
-                        {/* --- REMOVED BACK TO LOBBY BUTTON --- */}
-                        
+                        {/* Shortened Menu: Removed Ratio and Lobby buttons */}
                         <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
                         <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
                         
@@ -1204,7 +1276,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
         )}
-    </div>
     </div>
   );
 };
@@ -1636,6 +1707,7 @@ function App() {
           socket.emit('join-room', ROOM_ID, id, spectatorMode);
           
           if (!spectatorMode) {
+              // Initial sync: Send everything for the first time
               socket.emit('update-game-state', { userId: id, data: initialData });
           }
         });
