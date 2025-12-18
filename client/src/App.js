@@ -1678,7 +1678,19 @@ function App() {
         }
     });
 
-    socket.on('full-state-sync', (allData) => { if(allData) setGameState(prev => ({ ...prev, ...allData })); });
+    // --- FIXED: LISTEN FOR FULL STATE (INCLUDING TURN) ---
+    socket.on('full-state-sync', (data) => { 
+        if (data) {
+            // Unpack Game State
+            if (data.gameState) {
+                setGameState(prev => ({ ...prev, ...data.gameState }));
+            }
+            // Unpack Turn State (FIXES YELLOW HIGHLIGHT DESYNC)
+            if (data.turnState) {
+                setTurnState(data.turnState);
+            }
+        }
+    });
 
     socket.on('user-disconnected', disconnectedId => {
       if (peersRef.current[disconnectedId]) { peersRef.current[disconnectedId].close(); delete peersRef.current[disconnectedId]; }
