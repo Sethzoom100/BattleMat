@@ -1037,6 +1037,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
+// --- UPDATED: MOVED SETTINGS MENU OUTSIDE OF CLIPPING CONTAINER ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -1089,7 +1090,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
         onDragStart={(e) => isHost && onDragStart(e, userId)} 
         onDragOver={(e) => isHost && e.preventDefault()} 
         onDrop={(e) => isHost && onDrop(e, userId)} 
-        style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default' }}
+        // --- ADDED position: relative ---
+        style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default', position: 'relative' }}
     >
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden' }}>
         <div style={{ width: finalW, height: finalH, position: 'relative', overflow: 'hidden' }}>
@@ -1133,46 +1135,8 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
 
-            <div style={{position: 'absolute', top: '10px', right: '10px', zIndex: 1000}}>
-                <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
-                {showSettings && (
-                    <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '5px', background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column' }}>
-                        <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
-                        {isMyStream && (
-                            <>
-                                <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
-                                <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
-                                <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
-                                
-                                <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
-                                <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
+            {/* SETTINGS MENU WAS HERE - REMOVED */}
 
-                                <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
-                                <div style={{padding: '8px', borderTop: '1px solid #444'}}>
-                                    <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
-                                    <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
-                                        <input type="number" min="1" max="10" value={rollCount} onChange={(e) => setRollCount(parseInt(e.target.value))} style={{width: '35px', background: '#333', border:'1px solid #555', color:'white', fontSize:'11px', textAlign:'center', borderRadius: '3px', padding: '4px'}} />
-                                        <select value={selectedDice} onChange={(e) => setSelectedDice(e.target.value)} style={{flex: 1, background: '#333', border: '1px solid #555', color: 'white', fontSize: '11px', borderRadius: '3px', padding: '4px', cursor: 'pointer'}}>
-                                            <option value="d20">D20</option>
-                                            <option value="d12">D12</option>
-                                            <option value="d10">D10</option>
-                                            <option value="d8">D8</option>
-                                            <option value="d6">D6</option>
-                                            <option value="d4">D4</option>
-                                            <option value="coin">🪙 Coin</option>
-                                        </select>
-                                    </div>
-                                    <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
-                                </div>
-                                <div style={{padding: '8px', borderTop: '1px solid #444'}}>
-                                    <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
-                                    <TokenSearchBar onSelect={handleAddToken} />
-                                </div>
-                            </>
-                        )}
-                    </div>
-                )}
-            </div>
             <div style={{ position: 'absolute', top: '0', left: '0', right: '0', height: '60px', pointerEvents: 'none' }}>
             <div style={{pointerEvents: 'auto'}}><BigLifeCounter life={life} isMyStream={isMyStream} onLifeChange={(amt) => updateGame(userId, { life: life + amt })} onLifeSet={(val) => updateGame(userId, { life: val })} /></div>
             <div style={{ position: 'absolute', top: '15px', left: '50%', transform: 'translateX(-50%)', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: '4px', pointerEvents: 'auto', zIndex: 40 }}>
@@ -1200,6 +1164,48 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {showDamagePanel && <DamagePanel userId={userId} targetPlayerData={playerData} allPlayerIds={allPlayerIds.filter(id => id !== userId)} allGameState={allGameState} isMyStream={isMyStream} updateGame={(target, updates, cmd) => updateGame(userId, updates, cmd)} onClose={() => setShowDamagePanel(false)} />}
         </div>
       </div>
+
+      {/* --- MOVED SETTINGS HERE (Outside Overflow Hidden) --- */}
+      <div style={{position: 'absolute', top: '14px', right: '14px', zIndex: 1000}}>
+        <button onClick={() => setShowSettings(!showSettings)} style={{ background: 'rgba(0,0,0,0.6)', color: 'white', border: '1px solid #555', borderRadius: '50%', width: '28px', height: '28px', cursor: 'pointer', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>⚙️</button>
+        {showSettings && (
+            <div style={{ position: 'absolute', top: '100%', right: '0', marginTop: '5px', background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column' }}>
+                <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
+                {isMyStream && (
+                    <>
+                        <button onClick={() => { onSwitchRatio(); setShowSettings(false); }} style={menuBtnStyle}>📷 Ratio: {currentRatio}</button>
+                        <button onClick={() => { onClaimStatus('monarch'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#facc15'}}>👑 Claim Monarch</button>
+                        <button onClick={() => { onClaimStatus('initiative'); setShowSettings(false); }} style={{...menuBtnStyle, color: '#a8a29e'}}>🏰 Take Initiative</button>
+                        
+                        <button onClick={() => { onOpenDeckSelect(); setShowSettings(false); }} style={menuBtnStyle}>🔄 Change Deck</button>
+                        <button onClick={() => { onLeaveGame(); setShowSettings(false); }} style={{...menuBtnStyle, color: '#fca5a5'}}>🚪 Back to Lobby</button>
+
+                        <button onClick={() => { updateGame(myId, { life: 0 }); setShowSettings(false); }} style={{...menuBtnStyle, color: '#ef4444'}}>💀 Eliminate Yourself</button>
+                        <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                            <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>DICE & COIN</div>
+                            <div style={{display: 'flex', gap: '5px', alignItems: 'center'}}>
+                                <input type="number" min="1" max="10" value={rollCount} onChange={(e) => setRollCount(parseInt(e.target.value))} style={{width: '35px', background: '#333', border:'1px solid #555', color:'white', fontSize:'11px', textAlign:'center', borderRadius: '3px', padding: '4px'}} />
+                                <select value={selectedDice} onChange={(e) => setSelectedDice(e.target.value)} style={{flex: 1, background: '#333', border: '1px solid #555', color: 'white', fontSize: '11px', borderRadius: '3px', padding: '4px', cursor: 'pointer'}}>
+                                    <option value="d20">D20</option>
+                                    <option value="d12">D12</option>
+                                    <option value="d10">D10</option>
+                                    <option value="d8">D8</option>
+                                    <option value="d6">D6</option>
+                                    <option value="d4">D4</option>
+                                    <option value="coin">🪙 Coin</option>
+                                </select>
+                            </div>
+                            <button onClick={handleRollAction} style={{width: '100%', marginTop: '5px', background: '#2563eb', border: 'none', color: 'white', padding: '6px', borderRadius: '3px', cursor: 'pointer', fontSize: '11px', fontWeight: 'bold'}}>🎲 ROLL</button>
+                        </div>
+                        <div style={{padding: '8px', borderTop: '1px solid #444'}}>
+                            <div style={{fontSize: '10px', color: '#888', marginBottom: '4px'}}>ADD TOKEN</div>
+                            <TokenSearchBar onSelect={handleAddToken} />
+                        </div>
+                    </>
+                )}
+            </div>
+        )}
+    </div>
     </div>
   );
 };
