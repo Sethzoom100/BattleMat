@@ -1592,18 +1592,7 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  // --- COMMENTED OUT TO PREVENT REVERTING ---
-  // useEffect(() => {
-  //   const interval = setInterval(() => {
-  //       if (myIdRef.current && gameStateRef.current[myIdRef.current] && !isSpectator) {
-  //           socket.emit('update-game-state', {
-  //               userId: myIdRef.current,
-  //               data: gameStateRef.current[myIdRef.current]
-  //           });
-  //       }
-  //   }, 2000); 
-  //   return () => clearInterval(interval);
-  // }, [isSpectator]);
+  // --- REMOVED THE HEARTBEAT SETINTERVAL TO PREVENT DESYNC ---
 
   const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
