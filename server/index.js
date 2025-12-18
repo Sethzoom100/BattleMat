@@ -354,7 +354,7 @@ io.on('connection', (socket) => {
 
         io.to(roomId).emit('host-update', currentHostId);
         
-        // --- FIXED: Use 'full-state-sync' to match client listener ---
+        // --- CHANGED THIS LINE: Send 'full-state-sync' to match client ---
         socket.emit('full-state-sync', roomData[roomId]);
         
         socket.emit('all-users', activeUsers.filter(id => id !== userId));
