@@ -4,7 +4,13 @@ import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
 const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
-const socket = io(API_URL);
+const socket = io(API_URL, {
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+});
 
 // --- ASSETS ---
 const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
@@ -631,382 +637,6 @@ const ProfileScreen = ({ user, token, onClose, onUpdateUser }) => {
     );
 };
 
-// --- LOBBY ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout, onOpenGroups }) => {
-  const [step, setStep] = useState('mode'); 
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState('');
-  const [previewStream, setPreviewStream] = useState(null);
-  const [hideCommander, setHideCommander] = useState(false); 
-  
-  // Random State
-  const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-  const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
-  const [resetCycle, setResetCycle] = useState(false);
-
-  const videoRef = useRef(null);
-
-  useEffect(() => {
-    if (step === 'setup') {
-      navigator.mediaDevices.enumerateDevices().then(devices => {
-        const videos = devices.filter(d => d.kind === 'videoinput');
-        setVideoDevices(videos);
-        if (videos.length > 0) setSelectedDeviceId(videos[0].deviceId);
-      });
-    }
-  }, [step]);
-
-  useEffect(() => {
-    if (step === 'setup' && selectedDeviceId) {
-      const constraints = { video: { deviceId: { exact: selectedDeviceId }, aspectRatio: 1.777777778, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true };
-      if (previewStream) previewStream.getTracks().forEach(t => t.stop());
-      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-        setPreviewStream(stream);
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      }).catch(err => console.error("Preview Error:", err));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, selectedDeviceId]);
-
-  // --- RANDOM DECK LOGIC ---
-  const handleRandom = () => {
-    if (!user || !user.decks || user.decks.length === 0) return;
-    
-    let pool = [...user.decks];
-    let willReset = false;
-
-    if (useCycle && user.deckCycleHistory) {
-        const playedIds = user.deckCycleHistory;
-        const remaining = pool.filter(d => !playedIds.includes(d._id));
-        if (remaining.length === 0) {
-            willReset = true;
-            alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
-            pool = [...user.decks];
-        } else {
-            pool = remaining;
-        }
-    }
-
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    const randomDeck = pool[randomIndex];
-    
-    onSelectDeck(randomDeck._id); // Update parent state
-    setWasRandomlyPicked(true);
-    setResetCycle(willReset);
-  };
-
-  const handleEnterGame = async () => { 
-      // RECORD CYCLE USAGE IF RANDOM WAS USED
-      if (wasRandomlyPicked && useCycle && user && token) {
-        try {
-            const res = await fetch(`${API_URL}/record-deck-usage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
-            });
-            const newHistory = await res.json();
-            onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
-        } catch (err) { console.error("Failed to update deck cycle", err); }
-      }
-
-      let deckData = null;
-      if (user && user.decks && selectedDeckId) {
-          const selected = user.decks.find(d => d._id === selectedDeckId);
-          if (selected) {
-              const names = selected.name.split(' + ');
-              const primary = await fetchCardData(names[0]);
-              const partner = names.length > 1 ? await fetchCardData(names[1]) : null;
-              deckData = { primary, partner };
-          }
-      }
-      onJoin(false, previewStream, deckData, hideCommander); 
-  };
-  
-  const handleSpectate = () => { if (previewStream) previewStream.getTracks().forEach(t => t.stop()); onJoin(true, null); };
-
-  const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
-
-  if (step === 'mode') {
-    return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
-        <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
-        {user ? (
-            <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
-
-                <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
-                <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-                    <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
-                    <button onClick={onOpenGroups} style={{padding: '8px 16px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👥 Groups</button>
-                </div>
-            </div>
-        ) : (
-            <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
-        )}
-        <div style={{ display: 'flex', gap: '30px' }}>
-            <button 
-                onClick={() => user && setStep('setup')} 
-                disabled={!user}
-                style={{
-                    ...lobbyBtnStyle, 
-                    background: user ? '#2563eb' : '#444', 
-                    cursor: user ? 'pointer' : 'not-allowed',
-                    opacity: user ? 1 : 0.6
-                }}
-            >
-                {user ? '🎥 Join as Player' : '🔒 Login to Play'}
-            </button>
-          <button onClick={handleSpectate} style={{...lobbyBtnStyle, background: '#333', color: '#ccc', border: '1px solid #555'}}>👁️ Spectate Only</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0f0f0f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
-      <h2 style={{color: '#ccc', marginBottom: '20px'}}>Setup Camera</h2>
-      <div style={{ width: '640px', height: '360px', background: 'black', borderRadius: '8px', overflow: 'hidden', border: '2px solid #333', boxShadow: '0 10px 30px black', position: 'relative', marginBottom: '20px' }}>
-        <video ref={videoRef} autoPlay muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        
-        {user && user.decks && (
-            <div>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
-                        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
-                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                        <input 
-                            type="checkbox" 
-                            checked={useCycle} 
-                            onChange={e => {
-                                setUseCycle(e.target.checked);
-                                localStorage.setItem('battlemat_use_cycle', e.target.checked);
-                            }} 
-                            id="cycleCheckLobby" 
-                            style={{cursor:'pointer'}} 
-                        />
-                        <label htmlFor="cycleCheckLobby" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
-                        </div>
-                </div>
-
-                <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                    <select 
-                        value={selectedDeckId} 
-                        onChange={e => {
-                            if(e.target.value === "ADD_NEW") {
-                                onOpenProfile(); 
-                            } else {
-                                onSelectDeck(e.target.value);
-                                setWasRandomlyPicked(false);
-                            }
-                        }} 
-                        style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
-                    >
-                        <option value="">-- No Deck --</option>
-                        {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
-                        <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
-                    </select>
-
-                    <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
-                    <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
-                </div>
-            </div>
-        )}
-
-        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Camera Source</label>
-        <select value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)} style={{ padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none' }}>
-            {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${device.deviceId.slice(0,5)}...`}</option>)}
-        </select>
-        <button onClick={handleEnterGame} style={{...lobbyBtnStyle, marginTop: '10px', width: '100%', fontSize: '1.2rem', padding: '15px'}}>✅ Enter Battle</button>
-        <button onClick={() => setStep('mode')} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', textDecoration: 'underline'}}>Back</button>
-      </div>
-    </div>
-  );
-};
-const lobbyBtnStyle = { padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer', background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' };
-const statBoxStyle = { background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444' };
-const inputStyle = { padding: '8px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px' };
-
-const DiceOverlay = ({ activeRoll }) => {
-  if (!activeRoll) return null;
-  return (
-    <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', display: 'flex', alignItems: 'center', justifyContent: 'center', zIndex: 2000, pointerEvents: 'none', flexDirection: 'column' }}>
-      <div style={{ background: 'rgba(0,0,0,0.85)', padding: '15px', borderRadius: '15px', display: 'flex', gap: '10px', flexWrap: 'wrap', justifyContent: 'center', border: '1px solid #666', boxShadow: '0 0 20px rgba(0,0,0,0.8)', maxWidth: '80%' }}>
-        {activeRoll.results.map((val, i) => (
-          <div key={i} className="dice-animation" style={{ width: '50px', height: '50px', borderRadius: activeRoll.type === 'coin' ? '50%' : '8px', background: activeRoll.type === 'coin' ? (val === 1 ? '#eab308' : '#94a3b8') : '#ef4444', display: 'flex', alignItems: 'center', justifyContent: 'center', color: 'white', fontWeight: 'bold', fontSize: '18px', border: '2px solid white', boxShadow: '0 4px 6px rgba(0,0,0,0.5)', textShadow: '0 2px 2px black', animation: 'popIn 0.3s ease-out forwards' }}>{activeRoll.type === 'coin' ? (val === 1 ? 'H' : 'T') : val}</div>
-        ))}
-      </div>
-    </div>
-  );
-};
-
-const DraggableToken = ({ token, isMyStream, onUpdate, onRemove, onInspect, onOpenMenu }) => {
-  const [isDragging, setIsDragging] = useState(false);
-  const [pos, setPos] = useState({ x: token.x, y: token.y });
-  const dragOffset = useRef({ x: 0, y: 0 });
-  const parentRect = useRef(null);
-  const hasMoved = useRef(false); 
-  useEffect(() => { setPos({ x: token.x, y: token.y }); }, [token.x, token.y]);
-  
-  const handleMouseDown = (e) => {
-    if (!isMyStream || e.button !== 0) return; 
-    e.stopPropagation(); e.preventDefault();
-    setIsDragging(true); hasMoved.current = false; 
-    const rect = e.currentTarget.getBoundingClientRect();
-    const centerX = rect.left + (rect.width / 2);
-    const centerY = rect.top + (rect.height / 2);
-    dragOffset.current = { x: e.clientX - centerX, y: e.clientY - centerY };
-    parentRect.current = e.currentTarget.offsetParent.getBoundingClientRect();
-  };
-  const handleMouseMove = useCallback((e) => {
-    if (!isDragging || !parentRect.current) return;
-    e.stopPropagation(); hasMoved.current = true;
-    const rawCenterX = e.clientX - parentRect.current.left - dragOffset.current.x;
-    const rawCenterY = e.clientY - parentRect.current.top - dragOffset.current.y;
-    const pctX = (rawCenterX / parentRect.current.width) * 100;
-    const pctY = (rawCenterY / parentRect.current.height) * 100;
-    setPos({ x: pctX, y: pctY });
-  }, [isDragging]);
-  const handleMouseUp = useCallback((e) => {
-    if (!isDragging) return;
-    e.stopPropagation(); setIsDragging(false);
-    if (hasMoved.current) onUpdate({ ...token, x: pos.x, y: pos.y });
-  }, [isDragging, pos, onUpdate, token]);
-  useEffect(() => {
-    if (isDragging) { window.addEventListener('mousemove', handleMouseMove); window.addEventListener('mouseup', handleMouseUp); } 
-    else { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); }
-    return () => { window.removeEventListener('mousemove', handleMouseMove); window.removeEventListener('mouseup', handleMouseUp); };
-  }, [isDragging, handleMouseMove, handleMouseUp]);
-  const handleCounterChange = (e, amount) => { e.stopPropagation(); e.preventDefault(); if (isMyStream) onUpdate({ ...token, counter: (token.counter || 0) + amount }); };
-  return (
-    <div onMouseDown={handleMouseDown} onClick={(e) => { e.stopPropagation(); if (!hasMoved.current) isMyStream ? onUpdate({ ...token, isTapped: !token.isTapped }) : onInspect(token); }} onContextMenu={(e) => { e.preventDefault(); e.stopPropagation(); if (isMyStream) onOpenMenu(token, e.clientX - e.currentTarget.parentElement.getBoundingClientRect().left, e.clientY - e.currentTarget.parentElement.getBoundingClientRect().top); }}
-      style={{ position: 'absolute', left: `${pos.x}%`, top: `${pos.y}%`, width: '10%', minWidth: '45px', zIndex: isDragging ? 1000 : 500, cursor: isMyStream ? 'grab' : 'zoom-in', transform: `translate(-50%, -50%) ${token.isTapped ? 'rotate(90deg)' : 'rotate(0deg)'}`, transition: isDragging ? 'none' : 'transform 0.2s' }}
-    >
-      <div style={{position: 'relative', width: '100%'}}>
-        <img src={token.image} alt="token" style={{ width: '100%', borderRadius: '6px', boxShadow: '0 4px 10px rgba(0,0,0,0.8)', border: '1px solid rgba(255,255,255,0.8)' }} draggable="false" />
-        {token.counter !== undefined && token.counter !== null && (
-            <div onMouseDown={(e) => e.stopPropagation()} onClick={(e) => e.stopPropagation()} style={{ position: 'absolute', bottom: '-8px', left: '-8px', background: '#111', border: '1px solid #666', borderRadius: '4px', display: 'flex', alignItems: 'center', justifyContent: 'center', boxShadow: '0 2px 5px black', overflow: 'hidden', transform: token.isTapped ? 'rotate(-90deg)' : 'none' }}>
-                {isMyStream && <button onClick={(e) => handleCounterChange(e, -1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>-</button>}
-                <span style={{fontSize: '11px', fontWeight: 'bold', color: '#fff', padding: '0 4px', minWidth: '14px', textAlign: 'center'}}>{token.counter}</span>
-                {isMyStream && <button onClick={(e) => handleCounterChange(e, 1)} style={{background: '#333', border: 'none', color: 'white', fontSize: '10px', width: '16px', height: '16px', cursor: 'pointer', display:'flex', alignItems:'center', justifyContent:'center'}}>+</button>}
-            </div>
-        )}
-      </div>
-    </div>
-  );
-};
-
-const TokenContextMenu = ({ x, y, onDelete, onInspect, onToggleCounter, onClose }) => (
-    <>
-        <div onClick={(e) => { e.stopPropagation(); onClose(); }} style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1999}} />
-        <div style={{ position: 'absolute', top: y, left: x, background: '#222', border: '1px solid #555', borderRadius: '4px', zIndex: 2000, minWidth: '120px', boxShadow: '0 4px 15px rgba(0,0,0,0.8)', overflow: 'hidden' }}>
-            <div onClick={(e) => { e.stopPropagation(); onInspect(); onClose(); }} style={menuItemStyle}>🔍 Inspect</div>
-            <div onClick={(e) => { e.stopPropagation(); onToggleCounter(); onClose(); }} style={menuItemStyle}>🔢 Counter</div>
-            <div onClick={(e) => { e.stopPropagation(); onDelete(); onClose(); }} style={{...menuItemStyle, color: '#ef4444', borderTop: '1px solid #333'}}>🗑️ Delete</div>
-        </div>
-    </>
-);
-
-const TokenSearchBar = ({ onSelect }) => {
-  const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
-  const handleSelect = (name) => { setQuery(""); setShowDropdown(false); onSelect(name); };
-  return (
-    <div style={{ position: 'relative', width: '100%' }}>
-      <input type="text" placeholder="Search Token..." value={query} onChange={handleChange} onKeyDown={(e) => e.key === 'Enter' && handleSelect(query)} onFocus={() => query.length > 2 && setShowDropdown(true)} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{width: '100%', fontSize: '11px', padding: '4px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '3px'}} />
-      {showDropdown && suggestions.length > 0 && (
-        <div style={{ position: 'absolute', top: '100%', left: 0, width: '180px', background: '#222', border: '1px solid #444', borderRadius: '4px', maxHeight: '150px', overflowY: 'auto', zIndex: 9999, textAlign: 'left', boxShadow: '0 4px 10px rgba(0,0,0,0.9)' }}>
-          {suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '6px', fontSize: '11px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }} onMouseEnter={(e) => e.target.style.background = '#444'} onMouseLeave={(e) => e.target.style.background = 'transparent'}>{name}</div>)}
-        </div>
-      )}
-    </div>
-  );
-};
-
-// --- UPDATED: LIFE COUNTER (Fits inside the top bar) ---
-const BigLifeCounter = ({ life, isMyStream, onLifeChange, onLifeSet }) => {
-  const [isEditing, setIsEditing] = useState(false);
-  const [val, setVal] = useState(life);
-  
-  useEffect(() => { setVal(life); }, [life]);
-  
-  const handleFinish = () => { 
-      setIsEditing(false); 
-      const num = parseInt(val); 
-      if (!isNaN(num)) onLifeSet(num); 
-      else setVal(life); 
-  };
-
-  return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: '8px', marginRight: '10px', paddingRight: '10px', borderRight: '1px solid #444' }}>
-      {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(-1); }} style={roundBtnLarge}>-</button>}
-      
-      {isEditing ? (
-          <input 
-            autoFocus 
-            type="number" 
-            value={val} 
-            onChange={(e) => setVal(e.target.value)} 
-            onBlur={handleFinish} 
-            onKeyDown={(e) => e.key === 'Enter' && handleFinish()} 
-            onClick={(e) => e.stopPropagation()}
-            style={{ width: '40px', background: 'transparent', border: 'none', color: 'white', fontSize: '24px', fontWeight: 'bold', textAlign: 'center', outline: 'none', fontFamily: 'monospace' }} 
-          />
-      ) : (
-          <span 
-            onClick={(e) => { 
-                if(isMyStream) {
-                    e.stopPropagation(); 
-                    setIsEditing(true);
-                }
-            }} 
-            style={{ fontSize: '24px', fontWeight: 'bold', color: 'white', minWidth: '36px', textAlign: 'center', fontFamily: 'monospace', cursor: isMyStream ? 'pointer' : 'default' }}
-          >
-            {life}
-          </span>
-      )}
-      
-      {isMyStream && <button onClick={(e) => { e.stopPropagation(); onLifeChange(1); }} style={roundBtnLarge}>+</button>}
-    </div>
-  );
-};
-
-const HeaderSearchBar = ({ onCardFound, onToggleHistory }) => {
-  const [query, setQuery] = useState("");
-  const [suggestions, setSuggestions] = useState([]);
-  const [showDropdown, setShowDropdown] = useState(false);
-  const handleChange = async (e) => { const val = e.target.value; setQuery(val); if (val.length > 2) { setSuggestions(await fetchAnyCardAutocomplete(val)); setShowDropdown(true); } else setShowDropdown(false); };
-  const handleSelect = async (name) => { setQuery(""); setShowDropdown(false); const d = await fetchCardData(name); if(d) onCardFound(d); };
-  return (
-    <div style={{ position: 'relative', width: '290px', zIndex: 9000, display: 'flex', gap: '5px' }}>
-      <div style={{flex: 1, position: 'relative'}}>
-        <input type="text" placeholder="🔍 Search Card..." value={query} onChange={handleChange} onKeyDown={async (e) => { if (e.key === 'Enter') { setShowDropdown(false); const d = await fetchCardData(query); if(d) {onCardFound(d); setQuery("");} } }} onFocus={() => { if(query.length > 2) setShowDropdown(true); }} onBlur={() => setTimeout(() => setShowDropdown(false), 200)} style={{ width: '100%', padding: '6px 10px', borderRadius: '4px', border: '1px solid #444', background: '#222', color: 'white', fontSize: '13px', outline: 'none' }} />
-        {showDropdown && suggestions.length > 0 && <div style={{ position: 'absolute', top: '100%', left: 0, width: '100%', background: '#1a1a1a', border: '1px solid #444', maxHeight: '400px', overflowY: 'auto', zIndex: 100001, boxShadow: '0 10px 40px rgba(0,0,0,0.9)' }}>{suggestions.map((name, i) => <div key={i} onClick={() => handleSelect(name)} style={{ padding: '8px 10px', fontSize: '13px', cursor: 'pointer', borderBottom: '1px solid #333', color: '#ddd' }}>{name}</div>)}</div>}
-      </div>
-      <button onClick={onToggleHistory} style={{ height: '100%', padding: '0 10px', background: '#333', border: '1px solid #555', color: '#ccc', borderRadius: '4px', cursor: 'pointer', fontSize: '16px' }}>🕒</button>
-    </div>
-  );
-};
-
-const HistoryModal = ({ history, onSelect, onClose }) => {
-    return (
-        <div onClick={onClose} style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.9)', zIndex: 200000, display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', backdropFilter: 'blur(8px)' }}>
-            <div style={{color: '#999', marginBottom: '20px', fontSize: '20px', letterSpacing: '2px', fontWeight: 'bold'}}>SEARCH HISTORY</div>
-            <div onClick={(e) => e.stopPropagation()} style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '15px', maxWidth: '1200px', width: '90%', padding: '20px' }}>
-                {history.length === 0 && <div style={{color: '#666', gridColumn: 'span 6', textAlign: 'center'}}>No history yet.</div>}
-                {history.map((card, i) => (
-                    <div key={i} onClick={() => { onSelect(card); onClose(); }} style={{ cursor: 'pointer', position: 'relative' }}>
-                        <img src={card.image} alt={card.name} style={{ width: '100%', borderRadius: '8px', transition: 'transform 0.15s ease', border: '1px solid #444', boxShadow: '0 5px 15px black' }} onMouseEnter={(e) => { e.target.style.transform = 'scale(1.2)'; e.target.style.zIndex = '100'; }} onMouseLeave={(e) => { e.target.style.transform = 'scale(1)'; e.target.style.zIndex = '1'; }} />
-                    </div>
-                ))}
-            </div>
-        </div>
-    );
-};
-
 const CardModal = ({ cardData, onClose }) => {
   if (!cardData) return null;
   return (
@@ -1104,6 +734,7 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
             <div style={{width: '110px', borderLeft: '1px solid #444', paddingLeft: '15px', display: 'flex', flexDirection: 'column', gap: '10px'}}>
                 <div style={{fontSize: '10px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Status</div>
                 
+                {/* --- UPDATE: ADDED onClose() TO BUTTONS --- */}
                 <button 
                     onClick={() => { onClaimStatus('monarch'); onClose(); }} 
                     style={{...menuBtnStyle, border: '1px solid #f59e0b', background: 'rgba(245, 158, 11, 0.1)', color: '#facc15', textAlign: 'center', borderRadius: '6px', padding: '8px 4px'}}
@@ -1722,7 +1353,29 @@ function App() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [handleMyLifeChange, passTurn]);
 
-  // --- REMOVED THE HEARTBEAT SETINTERVAL TO PREVENT DESYNC ---
+  // --- RECONNECTION HANDLER (Fixes Desync after time) ---
+  useEffect(() => {
+    const handleReconnect = () => {
+        if (hasJoined && myId) {
+            console.log("🔄 Connection restored. Re-syncing...");
+            // 1. Re-register with the room
+            socket.emit('join-room', ROOM_ID, myId, isSpectator);
+            
+            // 2. Force-push local data to server (heals server if it restarted)
+            if (gameStateRef.current[myId]) {
+                socket.emit('update-game-state', { userId: myId, data: gameStateRef.current[myId] });
+            }
+            
+            // 3. If Host, restore turn state
+            if (myId === hostId && turnStateRef.current) { // Use ref for current host/turn check
+                socket.emit('update-turn-state', turnStateRef.current);
+            }
+        }
+    };
+
+    socket.on('connect', handleReconnect);
+    return () => socket.off('connect', handleReconnect);
+  }, [hasJoined, myId, isSpectator, hostId]);
 
   const joinGame = (spectatorMode, existingStream = null, deckData = null, isSecret = false) => {
     setHasJoined(true);
