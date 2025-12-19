@@ -3,14 +3,8 @@ import io from 'socket.io-client';
 import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
-const API_URL = 'https://battlemat.onrender.com'; 
-const socket = io(API_URL, {
-    reconnection: true,
-    reconnectionAttempts: Infinity,
-    reconnectionDelay: 1000,
-    reconnectionDelayMax: 5000,
-    timeout: 20000,
-});
+const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
+const socket = io(API_URL);
 
 // --- ASSETS ---
 const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
@@ -33,6 +27,8 @@ const menuItemStyle = { padding: '8px', fontSize: '12px', cursor: 'pointer', col
 const lobbyBtnStyle = { padding: '20px 40px', fontSize: '1.5rem', cursor: 'pointer', background: '#2563eb', color: 'white', border: 'none', borderRadius: '10px', boxShadow: '0 4px 15px rgba(37, 99, 235, 0.5)', transition: 'transform 0.2s', display: 'flex', alignItems: 'center', gap: '10px', justifyContent: 'center' };
 const statBoxStyle = { background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444' };
 const inputStyle = { padding: '8px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px' };
+const diceBtnStyle = { background: '#333', border: '1px solid #555', color: '#eee', borderRadius: '3px', padding: '4px', cursor: 'pointer', fontSize: '10px' };
+
 
 // --- API HELPERS ---
 const fetchCardData = async (cardName) => {
@@ -293,7 +289,7 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   return <span style={{color: '#555', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
-// --- UPDATED: DAMAGE PANEL ---
+// --- UPDATED: DAMAGE PANEL (DROPDOWN STYLE WITH 2 COLUMNS) ---
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClaimStatus, onClose }) => {
   const poison = targetPlayerData?.poison || 0;
   const cmdDamageTaken = targetPlayerData?.cmdDamageTaken || {};
@@ -368,7 +364,298 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
   );
 };
 
-// --- VIDEO CONTAINER ---
+// --- AUTH COMPONENT ---
+const AuthModal = ({ onClose, onLogin }) => {
+    const [isRegister, setIsRegister] = useState(false);
+    const [username, setUsername] = useState("");
+    const [password, setPassword] = useState("");
+    
+    const handleSubmit = async () => {
+        const endpoint = isRegister ? '/register' : '/login';
+        try {
+            const res = await fetch(`${API_URL}${endpoint}`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ username, password })
+            });
+            const data = await res.json();
+            if (!res.ok) throw new Error(data.msg);
+            
+            if (isRegister) { 
+                setIsRegister(false); 
+                alert("Account created! Log in."); 
+            } else { 
+                localStorage.setItem('battlemat_token', data.token);
+                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
+                onLogin(data.user, data.token); 
+                onClose(); 
+            }
+        } catch (err) { alert(err.message); }
+    };
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+            <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '300px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '15px' }}>
+                <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>{isRegister ? "Create Account" : "Login"}</h2>
+                <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
+                <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
+                <button onClick={handleSubmit} style={{padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold'}}>{isRegister ? "Register" : "Login"}</button>
+                <div style={{fontSize: '12px', textAlign: 'center', cursor: 'pointer', color: '#aaa'}} onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Have account? Login" : "No account? Create one"}</div>
+                <button onClick={onClose} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px'}}>Cancel</button>
+            </div>
+        </div>
+    );
+};
+
+// --- GROUPS MODAL ---
+const GroupsModal = ({ user, onClose, onUpdateUser }) => {
+    const [view, setView] = useState('list');
+    const [newGroupName, setNewGroupName] = useState("");
+    const [joinCode, setJoinCode] = useState("");
+    const [groupDetails, setGroupDetails] = useState(null);
+    const [lbTimeframe, setLbTimeframe] = useState('all');
+    const [lbType, setLbType] = useState('players');
+    const [leaderboardData, setLeaderboardData] = useState([]);
+
+    const handleCreateGroup = async () => {
+        if(!newGroupName) return;
+        try {
+            const res = await fetch(`${API_URL}/create-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, name: newGroupName })
+            });
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setNewGroupName("");
+        } catch (err) { alert("Error creating group"); }
+    };
+
+    const handleJoinGroup = async () => {
+        if(!joinCode) return;
+        try {
+            const res = await fetch(`${API_URL}/join-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, code: joinCode.toUpperCase() })
+            });
+            if(!res.ok) throw new Error("Invalid Code or Already Joined");
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setJoinCode("");
+        } catch (err) { alert(err.message); }
+    };
+
+    const openGroupDetail = async (group) => {
+        try {
+            const res = await fetch(`${API_URL}/group-details/${group._id}`);
+            const details = await res.json();
+            setGroupDetails(details);
+            calculateLeaderboard(details, 'players', 'all');
+            setView('detail');
+        } catch(err) { console.error(err); }
+    };
+    
+    const handleLeave = async () => {
+        if(!window.confirm("Are you sure you want to leave this group?")) return;
+        try {
+            const res = await fetch(`${API_URL}/leave-group`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ userId: user.id, groupId: groupDetails._id })
+            });
+            const updatedGroups = await res.json();
+            onUpdateUser({...user, groups: updatedGroups});
+            setView('list'); 
+        } catch (err) { alert("Error leaving group"); }
+    };
+
+    const handleKick = async (targetId) => {
+        if(!window.confirm("Kick this user?")) return;
+        try {
+            const res = await fetch(`${API_URL}/kick-member`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ requesterId: user.id, targetId, groupId: groupDetails._id })
+            });
+            if (!res.ok) throw new Error("Failed to kick");
+            const updatedMembers = groupDetails.members.filter(m => m._id !== targetId);
+            const updatedDetails = { ...groupDetails, members: updatedMembers };
+            setGroupDetails(updatedDetails);
+            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); 
+        } catch (err) { alert(err.message); }
+    };
+
+    const calculateLeaderboard = (details, type, time) => {
+        const now = new Date();
+        const currentMonth = now.getMonth();
+        const currentYear = now.getFullYear();
+        let data = [];
+
+        if (type === 'players') {
+            data = details.members.map(m => {
+                let wins = 0;
+                let games = 0;
+                if (time === 'all') {
+                    wins = m.stats.wins;
+                    games = m.stats.gamesPlayed;
+                } else {
+                    const monthlyMatches = (m.matchHistory || []).filter(match => {
+                        const d = new Date(match.date);
+                        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
+                    });
+                    games = monthlyMatches.length;
+                    wins = monthlyMatches.filter(match => match.result === 'win').length;
+                }
+                return { name: m.username, wins, games, winRate: games > 0 ? (wins/games) : 0 };
+            });
+        } else {
+            let allDecks = [];
+            details.members.forEach(m => {
+                m.decks.forEach(d => {
+                    let wins = 0;
+                    let games = 0;
+                    if (time === 'all') {
+                        wins = d.wins;
+                        games = d.wins + d.losses;
+                    } else {
+                        const deckMatches = (m.matchHistory || []).filter(match => {
+                            const date = new Date(match.date);
+                            return match.deckId === d._id && date.getMonth() === currentMonth && date.getFullYear() === currentYear;
+                        });
+                        games = deckMatches.length;
+                        wins = deckMatches.filter(match => match.result === 'win').length;
+                    }
+                    if (games > 0) {
+                        allDecks.push({ 
+                            name: d.name, 
+                            owner: m.username, 
+                            wins, 
+                            games, 
+                            winRate: (wins/games) 
+                        });
+                    }
+                });
+            });
+            data = allDecks;
+        }
+
+        data.sort((a,b) => b.winRate - a.winRate || b.wins - a.wins);
+        setLeaderboardData(data);
+    };
+
+    useEffect(() => {
+        if(groupDetails) calculateLeaderboard(groupDetails, lbType, lbTimeframe);
+    }, [lbType, lbTimeframe, groupDetails]);
+
+    const copyInvite = () => {
+        if(groupDetails) {
+            navigator.clipboard.writeText(groupDetails.code);
+            alert("Group Code Copied: " + groupDetails.code);
+        }
+    };
+    
+    const isAdmin = groupDetails && groupDetails.admins && groupDetails.admins.includes(user.id);
+
+    return (
+        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
+            <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
+            
+            {view === 'list' && (
+                <>
+                    <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>My Groups</h1>
+                    <div style={{display:'flex', gap:'20px', marginBottom:'30px', flexWrap:'wrap'}}>
+                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
+                            <h3 style={{marginTop:0}}>Create Group</h3>
+                            <div style={{display:'flex', gap:'5px'}}>
+                                <input type="text" placeholder="Group Name" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} style={{...inputStyle, flex:1}} />
+                                <button onClick={handleCreateGroup} style={{background:'#2563eb', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Create</button>
+                            </div>
+                        </div>
+                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
+                            <h3 style={{marginTop:0}}>Join Group</h3>
+                            <div style={{display:'flex', gap:'5px'}}>
+                                <input type="text" placeholder="Enter Code (6 chars)" value={joinCode} onChange={e => setJoinCode(e.target.value)} style={{...inputStyle, flex:1, textTransform:'uppercase'}} maxLength={6} />
+                                <button onClick={handleJoinGroup} style={{background:'#16a34a', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Join</button>
+                            </div>
+                        </div>
+                    </div>
+                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px'}}>
+                        {user.groups && user.groups.map(g => (
+                            <div key={g._id} onClick={() => openGroupDetail(g)} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', padding: '20px', cursor:'pointer', textAlign:'center'}}>
+                                <div style={{fontSize:'18px', fontWeight:'bold', marginBottom:'5px'}}>{g.name}</div>
+                                <div style={{fontSize:'12px', color:'#666'}}>Click to view</div>
+                            </div>
+                        ))}
+                    </div>
+                </>
+            )}
+
+            {view === 'detail' && groupDetails && (
+                <div>
+                    <button onClick={() => setView('list')} style={{background: 'transparent', border:'none', color:'#aaa', cursor:'pointer', marginBottom:'10px'}}>← Back to List</button>
+                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #333', paddingBottom:'10px', marginBottom:'20px'}}>
+                        <div>
+                            <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
+                            <div style={{color:'#666', fontSize:'14px', marginTop:'5px'}}>Code: <span style={{color:'#fff', fontWeight:'bold'}}>{groupDetails.code}</span></div>
+                        </div>
+                        <div style={{display:'flex', gap:'10px'}}>
+                            <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
+                            <button onClick={handleLeave} style={{background: '#ef4444', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🚪 Leave Group</button>
+                        </div>
+                    </div>
+
+                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
+                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px', marginBottom:'30px'}}>
+                        {groupDetails.members.map(m => (
+                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
+                                <div>
+                                    <div style={{fontWeight:'bold'}}>{m.username} {(groupDetails.admins || []).includes(m._id) && <span style={{color:'#facc15', fontSize:'10px'}}>(Admin)</span>}</div>
+                                </div>
+                                {isAdmin && m._id !== user.id && (
+                                    <button onClick={(e) => { e.stopPropagation(); handleKick(m._id); }} style={{background:'transparent', border:'1px solid #ef4444', color:'#ef4444', cursor:'pointer', padding:'2px 6px', borderRadius:'4px', fontSize:'10px'}}>Kick</button>
+                                )}
+                            </div>
+                        ))}
+                    </div>
+
+                    <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
+                        <div style={{display:'flex', background:'#333', borderRadius:'4px', padding:'2px'}}>
+                            <button onClick={() => setLbType('players')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'players' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Players</button>
+                            <button onClick={() => setLbType('decks')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'decks' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Decks</button>
+                        </div>
+                        <select value={lbTimeframe} onChange={e => setLbTimeframe(e.target.value)} style={{padding:'6px', borderRadius:'4px', background:'#333', color:'white', border:'1px solid #555', outline:'none'}}>
+                            <option value="all">All Time</option>
+                            <option value="month">This Month</option>
+                        </select>
+                    </div>
+
+                    <div style={{background:'#1a1a1a', border:'1px solid #333', borderRadius:'8px', overflow:'hidden'}}>
+                        <div style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', background:'#222', padding:'10px', fontWeight:'bold', fontSize:'12px', color:'#aaa'}}>
+                            <div>{lbType === 'players' ? 'PLAYER' : 'DECK'}</div>
+                            {lbType === 'decks' && <div>OWNER</div>}
+                            <div style={{textAlign:'center'}}>WINS</div>
+                            <div style={{textAlign:'center'}}>GAMES</div>
+                            <div style={{textAlign:'right'}}>WIN RATE</div>
+                        </div>
+                        {leaderboardData.length === 0 && <div style={{padding:'20px', textAlign:'center', color:'#666'}}>No stats recorded for this period.</div>}
+                        {leaderboardData.map((row, i) => (
+                            <div key={i} style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', padding:'12px 10px', borderBottom:'1px solid #333', alignItems:'center'}}>
+                                <div style={{fontWeight:'bold'}}>{i+1}. {row.name}</div>
+                                {lbType === 'decks' && <div style={{fontSize:'12px', color:'#888'}}>{row.owner}</div>}
+                                <div style={{textAlign:'center', color:'#22c55e'}}>{row.wins}</div>
+                                <div style={{textAlign:'center'}}>{row.games}</div>
+                                <div style={{textAlign:'right'}}>{Math.round(row.winRate * 100)}%</div>
+                            </div>
+                        ))}
+                    </div>
+                </div>
+            )}
+        </div>
+    );
+};
+
+// --- VIDEO CONTAINER (SpellTable Style + Clean Settings) ---
 const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, myId, width, height, allPlayerIds, allGameState, onDragStart, onDrop, isActiveTurn, onSwitchRatio, currentRatio, onInspectToken, onClaimStatus, onRecordStat, onOpenDeckSelect, onLeaveGame, isHost }) => {
   const videoRef = useRef();
   const [showDamagePanel, setShowDamagePanel] = useState(false);
@@ -415,6 +702,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
   let finalH = width / TARGET_RATIO;
   if (finalH > height) { finalH = height; finalW = height * TARGET_RATIO; }
 
+  // Combine primary and partner for the label
   const primary = playerData?.commanders?.primary;
   const partner = playerData?.commanders?.partner;
 
@@ -424,10 +712,12 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
         onDragStart={(e) => isHost && onDragStart(e, userId)} 
         onDragOver={(e) => isHost && e.preventDefault()} 
         onDrop={(e) => isHost && onDrop(e, userId)} 
+        // --- ADDED position: relative so absolute menus work ---
         style={{ width: width, height: height, padding: '4px', boxSizing: 'border-box', transition: 'width 0.2s, height 0.2s', cursor: isHost ? 'grab' : 'default', position: 'relative' }}
     >
       <div style={{ width: '100%', height: '100%', display: 'flex', justifyContent: 'center', alignItems: 'center', background: 'black', borderRadius: '8px', boxShadow: '0 4px 10px rgba(0,0,0,0.5)', border: isDead ? '2px solid #333' : (isActiveTurn ? '2px solid #facc15' : '1px solid #333'), filter: isDead ? 'grayscale(100%)' : 'none', opacity: isDead ? 0.8 : 1, overflow: 'hidden', position: 'relative' }}>
         
+        {/* --- BACKDROP FOR CLICKING OFF --- */}
         { (showSettings || showDamagePanel) && (
             <div 
                 style={{position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1500}} 
@@ -439,6 +729,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             /> 
         )}
 
+        {/* --- TOP BAR --- */}
         <div style={{
             position: 'absolute', top: 0, left: 0, right: 0, height: '50px',
             background: 'rgba(0, 0, 0, 0.85)',
@@ -446,6 +737,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             padding: '0 10px', zIndex: 100, borderBottom: '1px solid rgba(255,255,255,0.1)'
         }}>
             
+            {/* LEFT: Life + Info */}
             <div style={{ display: 'flex', alignItems: 'center', flex: 1, overflow: 'hidden' }}>
                 <BigLifeCounter 
                     life={life} 
@@ -454,6 +746,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                     onLifeSet={(val) => updateGame(userId, { life: val })} 
                 />
                 
+                {/* Player Info (Click to Open Damage) */}
                 <div 
                     onClick={() => setShowDamagePanel(!showDamagePanel)}
                     title="Click to view Damage / Infect"
@@ -486,6 +779,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 </div>
             </div>
 
+            {/* RIGHT: Settings Button */}
             <button 
                 onClick={(e) => { e.stopPropagation(); setShowSettings(!showSettings); }} 
                 style={{ background: 'transparent', color: '#888', border: 'none', fontSize: '18px', cursor: 'pointer', padding: '5px', display: 'flex', alignItems: 'center' }}
@@ -510,6 +804,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
             {playerData?.tokens && playerData.tokens.map(token => <DraggableToken key={token.id} token={token} isMyStream={isMyStream} onUpdate={handleUpdateToken} onRemove={handleRemoveToken} onInspect={onInspectToken} onOpenMenu={(t, x, y) => setTokenMenu({ token: t, x, y })} />)}
             {tokenMenu && <TokenContextMenu x={tokenMenu.x} y={tokenMenu.y} onDelete={() => handleRemoveToken(tokenMenu.token.id)} onInspect={() => onInspectToken(tokenMenu.token)} onToggleCounter={() => handleUpdateToken({...tokenMenu.token, counter: tokenMenu.token.counter ? null : 1})} onClose={() => setTokenMenu(null)} />}
             
+            {/* Moved Status Icons down */}
             <div style={{position: 'absolute', top: '60px', left: '5px', display: 'flex', flexDirection: 'column', gap: '5px', zIndex: 40}}>
                 {playerData?.isMonarch && (
                     <div 
@@ -533,6 +828,7 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
         </div>
       </div>
 
+      {/* --- SETTINGS MENU (Outside Overflow) --- */}
       {showSettings && (
             <div style={{ position: 'absolute', top: '50px', right: '10px', zIndex: 2000, background: '#222', border: '1px solid #444', borderRadius: '6px', width: '180px', display: 'flex', flexDirection: 'column', boxShadow: '0 4px 20px rgba(0,0,0,0.8)' }}>
                 <button onClick={() => { setRotation(prev => prev === 0 ? 180 : 0); setShowSettings(false); }} style={menuBtnStyle}>🔄 Flip 180°</button>
@@ -565,200 +861,6 @@ const VideoContainer = ({ stream, userId, isMyStream, playerData, updateGame, my
                 )}
             </div>
         )}
-    </div>
-  );
-};
-
-// --- LOBBY ---
-const Lobby = ({ onJoin, user, token, onOpenAuth, onOpenProfile, onSelectDeck, selectedDeckId, onUpdateUser, onLogout, onOpenGroups }) => {
-  const [step, setStep] = useState('mode'); 
-  const [videoDevices, setVideoDevices] = useState([]);
-  const [selectedDeviceId, setSelectedDeviceId] = useState('');
-  const [previewStream, setPreviewStream] = useState(null);
-  const [hideCommander, setHideCommander] = useState(false); 
-  
-  // Random State
-  const [useCycle, setUseCycle] = useState(() => localStorage.getItem('battlemat_use_cycle') === 'true');
-  const [wasRandomlyPicked, setWasRandomlyPicked] = useState(false);
-  const [resetCycle, setResetCycle] = useState(false);
-
-  const videoRef = useRef(null);
-
-  useEffect(() => {
-    if (step === 'setup') {
-      navigator.mediaDevices.enumerateDevices().then(devices => {
-        const videos = devices.filter(d => d.kind === 'videoinput');
-        setVideoDevices(videos);
-        if (videos.length > 0) setSelectedDeviceId(videos[0].deviceId);
-      });
-    }
-  }, [step]);
-
-  useEffect(() => {
-    if (step === 'setup' && selectedDeviceId) {
-      const constraints = { video: { deviceId: { exact: selectedDeviceId }, aspectRatio: 1.777777778, width: { ideal: 1280 }, height: { ideal: 720 } }, audio: true };
-      if (previewStream) previewStream.getTracks().forEach(t => t.stop());
-      navigator.mediaDevices.getUserMedia(constraints).then(stream => {
-        setPreviewStream(stream);
-        if (videoRef.current) videoRef.current.srcObject = stream;
-      }).catch(err => console.error("Preview Error:", err));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [step, selectedDeviceId]);
-
-  // --- RANDOM DECK LOGIC ---
-  const handleRandom = () => {
-    if (!user || !user.decks || user.decks.length === 0) return;
-    
-    let pool = [...user.decks];
-    let willReset = false;
-
-    if (useCycle && user.deckCycleHistory) {
-        const playedIds = user.deckCycleHistory;
-        const remaining = pool.filter(d => !playedIds.includes(d._id));
-        if (remaining.length === 0) {
-            willReset = true;
-            alert("🎉 Cycle Complete! All decks played. Restarting cycle.");
-            pool = [...user.decks];
-        } else {
-            pool = remaining;
-        }
-    }
-
-    const randomIndex = Math.floor(Math.random() * pool.length);
-    const randomDeck = pool[randomIndex];
-    
-    onSelectDeck(randomDeck._id); // Update parent state
-    setWasRandomlyPicked(true);
-    setResetCycle(willReset);
-  };
-
-  const handleEnterGame = async () => { 
-      // RECORD CYCLE USAGE IF RANDOM WAS USED
-      if (wasRandomlyPicked && useCycle && user && token) {
-        try {
-            const res = await fetch(`${API_URL}/record-deck-usage`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${token}` },
-                body: JSON.stringify({ userId: user.id, deckId: selectedDeckId, resetCycle })
-            });
-            const newHistory = await res.json();
-            onUpdateUser(prev => ({ ...prev, deckCycleHistory: newHistory }));
-        } catch (err) { console.error("Failed to update deck cycle", err); }
-      }
-
-      let deckData = null;
-      if (user && user.decks && selectedDeckId) {
-          const selected = user.decks.find(d => d._id === selectedDeckId);
-          if (selected) {
-              const names = selected.name.split(' + ');
-              const primary = await fetchCardData(names[0]);
-              const partner = names.length > 1 ? await fetchCardData(names[1]) : null;
-              deckData = { primary, partner };
-          }
-      }
-      onJoin(false, previewStream, deckData, hideCommander); 
-  };
-  
-  const handleSpectate = () => { if (previewStream) previewStream.getTracks().forEach(t => t.stop()); onJoin(true, null); };
-
-  const sortedDecks = user && user.decks ? [...user.decks].sort((a, b) => a.name.localeCompare(b.name)) : [];
-
-  if (step === 'mode') {
-    return (
-      <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
-        <h1 style={{ marginBottom: '40px', fontSize: '3rem', color: '#c4b5fd', letterSpacing: '4px' }}>BattleMat</h1>
-        {user ? (
-            <div style={{marginBottom: '30px', textAlign: 'center'}}>
-                <button onClick={onLogout} style={{position: 'absolute', top: '20px', right: '20px', background: '#7f1d1d', border: '1px solid #991b1b', color: '#fff', cursor: 'pointer', padding: '8px 16px', borderRadius: '4px', fontSize: '12px', fontWeight: 'bold'}}>🚪 Logout</button>
-
-                <div style={{fontSize: '20px', fontWeight: 'bold', color: '#fff', marginBottom: '10px'}}>Welcome, {user.username}</div>
-                <div style={{display:'flex', gap:'10px', justifyContent:'center'}}>
-                    <button onClick={onOpenProfile} style={{padding: '8px 16px', background: '#4f46e5', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👤 View Profile</button>
-                    <button onClick={onOpenGroups} style={{padding: '8px 16px', background: '#0891b2', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer'}}>👥 Groups</button>
-                </div>
-            </div>
-        ) : (
-            <button onClick={onOpenAuth} style={{marginBottom: '30px', padding: '10px 20px', background: 'transparent', border: '1px solid #666', color: '#ccc', borderRadius: '20px', cursor: 'pointer'}}>👤 Login / Register</button>
-        )}
-        <div style={{ display: 'flex', gap: '30px' }}>
-            <button 
-                onClick={() => user && setStep('setup')} 
-                disabled={!user}
-                style={{
-                    ...lobbyBtnStyle, 
-                    background: user ? '#2563eb' : '#444', 
-                    cursor: user ? 'pointer' : 'not-allowed',
-                    opacity: user ? 1 : 0.6
-                }}
-            >
-                {user ? '🎥 Join as Player' : '🔒 Login to Play'}
-            </button>
-          <button onClick={handleSpectate} style={{...lobbyBtnStyle, background: '#333', color: '#ccc', border: '1px solid #555'}}>👁️ Spectate Only</button>
-        </div>
-      </div>
-    );
-  }
-
-  return (
-    <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#0f0f0f', display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', color: 'white', zIndex: 99999 }}>
-      <h2 style={{color: '#ccc', marginBottom: '20px'}}>Setup Camera</h2>
-      <div style={{ width: '640px', height: '360px', background: 'black', borderRadius: '8px', overflow: 'hidden', border: '2px solid #333', boxShadow: '0 10px 30px black', position: 'relative', marginBottom: '20px' }}>
-        <video ref={videoRef} autoPlay muted style={{ width: '100%', height: '100%', objectFit: 'contain' }} />
-        <div style={{position: 'absolute', bottom: '10px', left: '10px', background: 'rgba(0,0,0,0.7)', padding: '2px 8px', borderRadius: '4px', fontSize: '12px'}}>Preview</div>
-      </div>
-      <div style={{ display: 'flex', flexDirection: 'column', gap: '15px', width: '300px' }}>
-        
-        {user && user.decks && (
-            <div>
-                <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', marginBottom: '5px'}}>
-                        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Deck</label>
-                        <div style={{display:'flex', alignItems:'center', gap:'5px'}}>
-                        <input 
-                            type="checkbox" 
-                            checked={useCycle} 
-                            onChange={e => {
-                                setUseCycle(e.target.checked);
-                                localStorage.setItem('battlemat_use_cycle', e.target.checked);
-                            }} 
-                            id="cycleCheckLobby" 
-                            style={{cursor:'pointer'}} 
-                        />
-                        <label htmlFor="cycleCheckLobby" style={{fontSize: '11px', color: '#aaa', cursor:'pointer'}}>Cycle</label>
-                        </div>
-                </div>
-
-                <div style={{display: 'flex', gap: '10px', marginTop: '5px'}}>
-                    <select 
-                        value={selectedDeckId} 
-                        onChange={e => {
-                            if(e.target.value === "ADD_NEW") {
-                                onOpenProfile(); 
-                            } else {
-                                onSelectDeck(e.target.value);
-                                setWasRandomlyPicked(false);
-                            }
-                        }} 
-                        style={{flex: 1, padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none'}}
-                    >
-                        <option value="">-- No Deck --</option>
-                        {sortedDecks.map(d => <option key={d._id} value={d._id}>{d.name}</option>)}
-                        <option value="ADD_NEW" style={{fontWeight: 'bold', color: '#4f46e5'}}>✨ + Create New Deck...</option>
-                    </select>
-
-                    <button onClick={handleRandom} title="Pick Random Deck" style={{ background: '#7c3aed', border: 'none', borderRadius: '6px', cursor: 'pointer', padding: '0 12px', fontSize: '18px' }}>🎲</button>
-                    <button onClick={() => setHideCommander(!hideCommander)} title="Hide Commander" style={{ background: hideCommander ? '#ef4444' : '#333', border: '1px solid #555', borderRadius: '6px', cursor: 'pointer', padding: '0 10px', fontSize: '16px' }}>{hideCommander ? '🙈' : '👁️'}</button>
-                </div>
-            </div>
-        )}
-
-        <label style={{fontSize: '12px', color: '#888', textTransform: 'uppercase', fontWeight: 'bold'}}>Select Camera Source</label>
-        <select value={selectedDeviceId} onChange={(e) => setSelectedDeviceId(e.target.value)} style={{ padding: '10px', borderRadius: '6px', background: '#222', color: 'white', border: '1px solid #444', outline: 'none' }}>
-            {videoDevices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || `Camera ${device.deviceId.slice(0,5)}...`}</option>)}
-        </select>
-        <button onClick={handleEnterGame} style={{...lobbyBtnStyle, marginTop: '10px', width: '100%', fontSize: '1.2rem', padding: '15px'}}>✅ Enter Battle</button>
-        <button onClick={() => setStep('mode')} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', textDecoration: 'underline'}}>Back</button>
-      </div>
     </div>
   );
 };
@@ -1441,11 +1543,5 @@ function App() {
     </>
   );
 }
-
-const roundBtnLarge = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold' };
-const tinyBtn = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '2px', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' };
-const menuBtnStyle = { width: '100%', padding: '8px', border: 'none', background: 'transparent', color: '#ccc', textAlign: 'left', cursor: 'pointer', borderBottom: '1px solid #333' };
-const menuItemStyle = { padding: '8px', fontSize: '12px', cursor: 'pointer', color: '#ddd' };
-const diceBtnStyle = { background: '#333', border: '1px solid #555', color: '#eee', borderRadius: '3px', padding: '4px', cursor: 'pointer', fontSize: '10px' };
 
 export default App;
