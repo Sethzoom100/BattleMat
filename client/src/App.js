@@ -4,7 +4,13 @@ import Peer from 'peerjs';
 
 // --- CONFIGURATION ---
 const API_URL = 'https://battlemat.onrender.com'; // Change to http://localhost:3001 for local testing
-const socket = io(API_URL);
+const socket = io(API_URL, {
+    reconnection: true,
+    reconnectionAttempts: Infinity,
+    reconnectionDelay: 1000,
+    reconnectionDelayMax: 5000,
+    timeout: 20000,
+});
 
 // --- ASSETS ---
 const MONARCH_CARD = { name: "The Monarch", image: "https://cards.scryfall.io/large/front/4/0/40b79918-22a7-4fff-82a6-8ebfe6e87185.jpg" };
@@ -19,7 +25,7 @@ const getRoomId = () => {
 };
 const ROOM_ID = getRoomId();
 
-// --- STYLES (Moved to Top) ---
+// --- STYLES (Defined First to avoid ReferenceErrors) ---
 const roundBtnLarge = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '50%', width: '24px', height: '24px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '16px', fontWeight: 'bold' };
 const tinyBtn = { background: '#555', border: 'none', color: 'white', cursor: 'pointer', borderRadius: '2px', width: '16px', height: '16px', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: '10px' };
 const menuBtnStyle = { width: '100%', padding: '8px', border: 'none', background: 'transparent', color: '#ccc', textAlign: 'left', cursor: 'pointer', borderBottom: '1px solid #333' };
@@ -28,7 +34,6 @@ const lobbyBtnStyle = { padding: '20px 40px', fontSize: '1.5rem', cursor: 'point
 const statBoxStyle = { background: '#222', padding: '15px', borderRadius: '8px', minWidth: '100px', textAlign: 'center', border: '1px solid #444' };
 const inputStyle = { padding: '8px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '4px' };
 const diceBtnStyle = { background: '#333', border: '1px solid #555', color: '#eee', borderRadius: '3px', padding: '4px', cursor: 'pointer', fontSize: '10px' };
-
 
 // --- API HELPERS ---
 const fetchCardData = async (cardName) => {
@@ -83,7 +88,7 @@ const fetchAnyCardAutocomplete = async (text) => {
   } catch (err) { return []; }
 };
 
-// --- HELPER COMPONENTS (Moved to Top) ---
+// --- HELPER COMPONENTS ---
 
 const DiceOverlay = ({ activeRoll }) => {
   if (!activeRoll) return null;
@@ -289,7 +294,7 @@ const CommanderLabel = ({ placeholder, cardData, isMyStream, onSelect, onHover, 
   return <span style={{color: '#555', fontSize: '10px', fontStyle: 'italic'}}>No Commander</span>;
 };
 
-// --- UPDATED: DAMAGE PANEL (DROPDOWN STYLE WITH 2 COLUMNS) ---
+// --- UPDATED: DAMAGE PANEL ---
 const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isMyStream, updateGame, onClaimStatus, onClose }) => {
   const poison = targetPlayerData?.poison || 0;
   const cmdDamageTaken = targetPlayerData?.cmdDamageTaken || {};
@@ -362,297 +367,6 @@ const DamagePanel = ({ userId, targetPlayerData, allPlayerIds, allGameState, isM
       </div>
     </div>
   );
-};
-
-// --- AUTH COMPONENT ---
-const AuthModal = ({ onClose, onLogin }) => {
-    const [isRegister, setIsRegister] = useState(false);
-    const [username, setUsername] = useState("");
-    const [password, setPassword] = useState("");
-    
-    const handleSubmit = async () => {
-        const endpoint = isRegister ? '/register' : '/login';
-        try {
-            const res = await fetch(`${API_URL}${endpoint}`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ username, password })
-            });
-            const data = await res.json();
-            if (!res.ok) throw new Error(data.msg);
-            
-            if (isRegister) { 
-                setIsRegister(false); 
-                alert("Account created! Log in."); 
-            } else { 
-                localStorage.setItem('battlemat_token', data.token);
-                localStorage.setItem('battlemat_user', JSON.stringify(data.user));
-                onLogin(data.user, data.token); 
-                onClose(); 
-            }
-        } catch (err) { alert(err.message); }
-    };
-
-    return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: 'rgba(0,0,0,0.8)', zIndex: 100000, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#222', padding: '30px', borderRadius: '10px', width: '300px', border: '1px solid #444', color: 'white', display: 'flex', flexDirection: 'column', gap: '15px' }}>
-                <h2 style={{margin: 0, textAlign: 'center', color: '#c4b5fd'}}>{isRegister ? "Create Account" : "Login"}</h2>
-                <input type="text" placeholder="Username" value={username} onChange={e => setUsername(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
-                <input type="password" placeholder="Password" value={password} onChange={e => setPassword(e.target.value)} style={{padding: '10px', background: '#333', border: '1px solid #555', color: 'white', borderRadius: '5px'}} />
-                <button onClick={handleSubmit} style={{padding: '10px', background: '#2563eb', color: 'white', border: 'none', borderRadius: '5px', cursor: 'pointer', fontWeight: 'bold'}}>{isRegister ? "Register" : "Login"}</button>
-                <div style={{fontSize: '12px', textAlign: 'center', cursor: 'pointer', color: '#aaa'}} onClick={() => setIsRegister(!isRegister)}>{isRegister ? "Have account? Login" : "No account? Create one"}</div>
-                <button onClick={onClose} style={{background: 'transparent', border: 'none', color: '#666', cursor: 'pointer', fontSize: '12px'}}>Cancel</button>
-            </div>
-        </div>
-    );
-};
-
-// --- GROUPS MODAL ---
-const GroupsModal = ({ user, onClose, onUpdateUser }) => {
-    const [view, setView] = useState('list');
-    const [newGroupName, setNewGroupName] = useState("");
-    const [joinCode, setJoinCode] = useState("");
-    const [groupDetails, setGroupDetails] = useState(null);
-    const [lbTimeframe, setLbTimeframe] = useState('all');
-    const [lbType, setLbType] = useState('players');
-    const [leaderboardData, setLeaderboardData] = useState([]);
-
-    const handleCreateGroup = async () => {
-        if(!newGroupName) return;
-        try {
-            const res = await fetch(`${API_URL}/create-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, name: newGroupName })
-            });
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setNewGroupName("");
-        } catch (err) { alert("Error creating group"); }
-    };
-
-    const handleJoinGroup = async () => {
-        if(!joinCode) return;
-        try {
-            const res = await fetch(`${API_URL}/join-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, code: joinCode.toUpperCase() })
-            });
-            if(!res.ok) throw new Error("Invalid Code or Already Joined");
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setJoinCode("");
-        } catch (err) { alert(err.message); }
-    };
-
-    const openGroupDetail = async (group) => {
-        try {
-            const res = await fetch(`${API_URL}/group-details/${group._id}`);
-            const details = await res.json();
-            setGroupDetails(details);
-            calculateLeaderboard(details, 'players', 'all');
-            setView('detail');
-        } catch(err) { console.error(err); }
-    };
-    
-    const handleLeave = async () => {
-        if(!window.confirm("Are you sure you want to leave this group?")) return;
-        try {
-            const res = await fetch(`${API_URL}/leave-group`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ userId: user.id, groupId: groupDetails._id })
-            });
-            const updatedGroups = await res.json();
-            onUpdateUser({...user, groups: updatedGroups});
-            setView('list'); 
-        } catch (err) { alert("Error leaving group"); }
-    };
-
-    const handleKick = async (targetId) => {
-        if(!window.confirm("Kick this user?")) return;
-        try {
-            const res = await fetch(`${API_URL}/kick-member`, {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ requesterId: user.id, targetId, groupId: groupDetails._id })
-            });
-            if (!res.ok) throw new Error("Failed to kick");
-            const updatedMembers = groupDetails.members.filter(m => m._id !== targetId);
-            const updatedDetails = { ...groupDetails, members: updatedMembers };
-            setGroupDetails(updatedDetails);
-            calculateLeaderboard(updatedDetails, lbType, lbTimeframe); 
-        } catch (err) { alert(err.message); }
-    };
-
-    const calculateLeaderboard = (details, type, time) => {
-        const now = new Date();
-        const currentMonth = now.getMonth();
-        const currentYear = now.getFullYear();
-        let data = [];
-
-        if (type === 'players') {
-            data = details.members.map(m => {
-                let wins = 0;
-                let games = 0;
-                if (time === 'all') {
-                    wins = m.stats.wins;
-                    games = m.stats.gamesPlayed;
-                } else {
-                    const monthlyMatches = (m.matchHistory || []).filter(match => {
-                        const d = new Date(match.date);
-                        return d.getMonth() === currentMonth && d.getFullYear() === currentYear;
-                    });
-                    games = monthlyMatches.length;
-                    wins = monthlyMatches.filter(match => match.result === 'win').length;
-                }
-                return { name: m.username, wins, games, winRate: games > 0 ? (wins/games) : 0 };
-            });
-        } else {
-            let allDecks = [];
-            details.members.forEach(m => {
-                m.decks.forEach(d => {
-                    let wins = 0;
-                    let games = 0;
-                    if (time === 'all') {
-                        wins = d.wins;
-                        games = d.wins + d.losses;
-                    } else {
-                        const deckMatches = (m.matchHistory || []).filter(match => {
-                            const date = new Date(match.date);
-                            return match.deckId === d._id && date.getMonth() === currentMonth && date.getFullYear() === currentYear;
-                        });
-                        games = deckMatches.length;
-                        wins = deckMatches.filter(match => match.result === 'win').length;
-                    }
-                    if (games > 0) {
-                        allDecks.push({ 
-                            name: d.name, 
-                            owner: m.username, 
-                            wins, 
-                            games, 
-                            winRate: (wins/games) 
-                        });
-                    }
-                });
-            });
-            data = allDecks;
-        }
-
-        data.sort((a,b) => b.winRate - a.winRate || b.wins - a.wins);
-        setLeaderboardData(data);
-    };
-
-    useEffect(() => {
-        if(groupDetails) calculateLeaderboard(groupDetails, lbType, lbTimeframe);
-    }, [lbType, lbTimeframe, groupDetails]);
-
-    const copyInvite = () => {
-        if(groupDetails) {
-            navigator.clipboard.writeText(groupDetails.code);
-            alert("Group Code Copied: " + groupDetails.code);
-        }
-    };
-    
-    const isAdmin = groupDetails && groupDetails.admins && groupDetails.admins.includes(user.id);
-
-    return (
-        <div style={{ position: 'fixed', top: 0, left: 0, width: '100vw', height: '100vh', background: '#111', zIndex: 100000, overflowY: 'auto', padding: '40px', boxSizing: 'border-box', color: 'white' }}>
-            <button onClick={onClose} style={{position: 'absolute', top: '20px', right: '30px', fontSize: '24px', background: 'transparent', border: 'none', color: '#fff', cursor: 'pointer'}}>✕ Close</button>
-            
-            {view === 'list' && (
-                <>
-                    <h1 style={{color: '#c4b5fd', borderBottom: '1px solid #333', paddingBottom: '10px'}}>My Groups</h1>
-                    <div style={{display:'flex', gap:'20px', marginBottom:'30px', flexWrap:'wrap'}}>
-                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
-                            <h3 style={{marginTop:0}}>Create Group</h3>
-                            <div style={{display:'flex', gap:'5px'}}>
-                                <input type="text" placeholder="Group Name" value={newGroupName} onChange={e => setNewGroupName(e.target.value)} style={{...inputStyle, flex:1}} />
-                                <button onClick={handleCreateGroup} style={{background:'#2563eb', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Create</button>
-                            </div>
-                        </div>
-                        <div style={{background: '#222', padding: '15px', borderRadius: '8px', border: '1px solid #444', flex: 1, minWidth: '250px'}}>
-                            <h3 style={{marginTop:0}}>Join Group</h3>
-                            <div style={{display:'flex', gap:'5px'}}>
-                                <input type="text" placeholder="Enter Code (6 chars)" value={joinCode} onChange={e => setJoinCode(e.target.value)} style={{...inputStyle, flex:1, textTransform:'uppercase'}} maxLength={6} />
-                                <button onClick={handleJoinGroup} style={{background:'#16a34a', border:'none', color:'white', padding:'8px 12px', borderRadius:'4px', cursor:'pointer'}}>Join</button>
-                            </div>
-                        </div>
-                    </div>
-                    <div style={{display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(200px, 1fr))', gap: '15px'}}>
-                        {user.groups && user.groups.map(g => (
-                            <div key={g._id} onClick={() => openGroupDetail(g)} style={{background: '#1a1a1a', border: '1px solid #333', borderRadius: '8px', padding: '20px', cursor:'pointer', textAlign:'center'}}>
-                                <div style={{fontSize:'18px', fontWeight:'bold', marginBottom:'5px'}}>{g.name}</div>
-                                <div style={{fontSize:'12px', color:'#666'}}>Click to view</div>
-                            </div>
-                        ))}
-                    </div>
-                </>
-            )}
-
-            {view === 'detail' && groupDetails && (
-                <div>
-                    <button onClick={() => setView('list')} style={{background: 'transparent', border:'none', color:'#aaa', cursor:'pointer', marginBottom:'10px'}}>← Back to List</button>
-                    <div style={{display:'flex', justifyContent:'space-between', alignItems:'center', borderBottom:'1px solid #333', paddingBottom:'10px', marginBottom:'20px'}}>
-                        <div>
-                            <h1 style={{color: '#c4b5fd', margin: 0}}>{groupDetails.name}</h1>
-                            <div style={{color:'#666', fontSize:'14px', marginTop:'5px'}}>Code: <span style={{color:'#fff', fontWeight:'bold'}}>{groupDetails.code}</span></div>
-                        </div>
-                        <div style={{display:'flex', gap:'10px'}}>
-                            <button onClick={copyInvite} style={{background: '#7c3aed', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🔗 Invite</button>
-                            <button onClick={handleLeave} style={{background: '#ef4444', border:'none', color:'white', padding:'8px 16px', borderRadius:'6px', cursor:'pointer', fontWeight:'bold'}}>🚪 Leave Group</button>
-                        </div>
-                    </div>
-
-                    <h3 style={{borderBottom:'1px solid #333', paddingBottom:'5px'}}>Members ({groupDetails.members.length})</h3>
-                    <div style={{display:'grid', gridTemplateColumns:'repeat(auto-fill, minmax(200px, 1fr))', gap:'10px', marginBottom:'30px'}}>
-                        {groupDetails.members.map(m => (
-                            <div key={m._id} style={{background: '#222', padding: '10px', borderRadius: '4px', border:'1px solid #333', display:'flex', justifyContent:'space-between', alignItems:'center'}}>
-                                <div>
-                                    <div style={{fontWeight:'bold'}}>{m.username} {(groupDetails.admins || []).includes(m._id) && <span style={{color:'#facc15', fontSize:'10px'}}>(Admin)</span>}</div>
-                                </div>
-                                {isAdmin && m._id !== user.id && (
-                                    <button onClick={(e) => { e.stopPropagation(); handleKick(m._id); }} style={{background:'transparent', border:'1px solid #ef4444', color:'#ef4444', cursor:'pointer', padding:'2px 6px', borderRadius:'4px', fontSize:'10px'}}>Kick</button>
-                                )}
-                            </div>
-                        ))}
-                    </div>
-
-                    <div style={{display:'flex', gap:'15px', marginBottom:'20px', alignItems:'center'}}>
-                        <div style={{display:'flex', background:'#333', borderRadius:'4px', padding:'2px'}}>
-                            <button onClick={() => setLbType('players')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'players' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Players</button>
-                            <button onClick={() => setLbType('decks')} style={{padding:'6px 12px', border:'none', borderRadius:'3px', background: lbType === 'decks' ? '#4f46e5' : 'transparent', color:'white', cursor:'pointer'}}>Decks</button>
-                        </div>
-                        <select value={lbTimeframe} onChange={e => setLbTimeframe(e.target.value)} style={{padding:'6px', borderRadius:'4px', background:'#333', color:'white', border:'1px solid #555', outline:'none'}}>
-                            <option value="all">All Time</option>
-                            <option value="month">This Month</option>
-                        </select>
-                    </div>
-
-                    <div style={{background:'#1a1a1a', border:'1px solid #333', borderRadius:'8px', overflow:'hidden'}}>
-                        <div style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', background:'#222', padding:'10px', fontWeight:'bold', fontSize:'12px', color:'#aaa'}}>
-                            <div>{lbType === 'players' ? 'PLAYER' : 'DECK'}</div>
-                            {lbType === 'decks' && <div>OWNER</div>}
-                            <div style={{textAlign:'center'}}>WINS</div>
-                            <div style={{textAlign:'center'}}>GAMES</div>
-                            <div style={{textAlign:'right'}}>WIN RATE</div>
-                        </div>
-                        {leaderboardData.length === 0 && <div style={{padding:'20px', textAlign:'center', color:'#666'}}>No stats recorded for this period.</div>}
-                        {leaderboardData.map((row, i) => (
-                            <div key={i} style={{display:'grid', gridTemplateColumns: lbType === 'players' ? '1fr 1fr 1fr 1fr' : '2fr 1fr 1fr 1fr 1fr', padding:'12px 10px', borderBottom:'1px solid #333', alignItems:'center'}}>
-                                <div style={{fontWeight:'bold'}}>{i+1}. {row.name}</div>
-                                {lbType === 'decks' && <div style={{fontSize:'12px', color:'#888'}}>{row.owner}</div>}
-                                <div style={{textAlign:'center', color:'#22c55e'}}>{row.wins}</div>
-                                <div style={{textAlign:'center'}}>{row.games}</div>
-                                <div style={{textAlign:'right'}}>{Math.round(row.winRate * 100)}%</div>
-                            </div>
-                        ))}
-                    </div>
-                </div>
-            )}
-        </div>
-    );
 };
 
 // --- VIDEO CONTAINER (SpellTable Style + Clean Settings) ---
